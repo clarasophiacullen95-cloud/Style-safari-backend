@@ -9,13 +9,13 @@ export default async function handler(req, res) {
         if (!db) return res.status(500).json({ error: "Missing MongoDB configuration" });
 
         const { q, brand, category, minPrice, maxPrice, in_stock, store, user_gender } = req.query;
+
         const query = {};
 
-        // Brand mapping
-        let searchBrands = [];
+        // Brand mapping: optional alias mapping collection
         if (brand) {
             const mapping = await db.collection("brand_mappings").findOne({ brand_aliases: brand });
-            searchBrands = mapping ? mapping.affiliate_brands : [brand];
+            const searchBrands = mapping ? mapping.affiliate_brands : [brand];
             query.brand = { $in: searchBrands };
         }
 
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
             if (maxPrice) query.price.$lte = parseFloat(maxPrice);
         }
 
-        // In stock filter
+        // Stock filter
         if (in_stock) query.in_stock = in_stock === "true";
 
         // Store filter
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
         // Multi-keyword search
         if (q) {
             const keywords = q.toLowerCase().split(" ");
-            const keywordConditions = keywords.map(word => ({
+            query.$and = keywords.map(word => ({
                 $or: [
                     { name: { $regex: word, $options: "i" } },
                     { category: { $regex: word, $options: "i" } },
@@ -46,15 +46,14 @@ export default async function handler(req, res) {
                     { color: { $regex: word, $options: "i" } }
                 ]
             }));
-            query.$and = keywordConditions;
         }
 
-        // Gender filter
+        // Gender filter (prioritize store-brand mapping)
         if (user_gender) {
             query.$or = [
-                { gender: user_gender },
-                { gender: { $exists: false } },
-                { gender: null }
+                { gender: user_gender.toLowerCase() },  // mapped gender from sync
+                { gender: null },                        // unisex
+                { gender: { $exists: false } }          // fallback
             ];
         }
 
@@ -64,7 +63,7 @@ export default async function handler(req, res) {
             .limit(100)
             .toArray();
 
-        // Optional store-wide fallback if zero results
+        // Optional fallback if zero results
         if (products.length === 0 && store) {
             const fallback = await db.collection("products")
                 .find({ store })
