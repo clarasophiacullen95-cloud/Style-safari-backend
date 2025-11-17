@@ -1,13 +1,17 @@
 {
   "name": "style-safari-backend",
   "version": "1.0.0",
+  "description": "Backend for Style Safari app, syncs Base44 products to MongoDB",
   "type": "module",
-  "main": "api/sync.js",
+  "main": "index.js",
   "scripts": {
-    "start": "vercel dev"
+    "start": "node api/sync.js"
+  },
+  "engines": {
+    "node": "18.x"
   },
   "dependencies": {
-    "mongodb": "^5.8.0",
+    "mongodb": "^5.6.0",
     "node-fetch": "^3.3.2"
   }
 }
