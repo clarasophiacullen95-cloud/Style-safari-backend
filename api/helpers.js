@@ -22,5 +22,7 @@ export async function fetchAffiliateProducts() {
   }
 
   const data = await res.json();
-  return data || []; // data should be an array of product entities
+
+  // Base44 may wrap entities inside a "data" field
+  return data.data || data || [];
 }
