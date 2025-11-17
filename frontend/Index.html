@@ -1,19 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Style Safari AI Outfits</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .outfit { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+    img { max-width: 150px; display: block; margin-bottom: 5px; }
+  </style>
 </head>
 <body>
-  <!-- Profile Form -->
+  <h1>Style Safari AI Outfits</h1>
+
   <form id="profileForm">
-    ...
+    <label>Gender:
+      <select name="gender">
+        <option value="female">Female</option>
+        <option value="male">Male</option>
+      </select>
+    </label><br><br>
+
+    <label>Style Preferences (comma separated):
+      <input type="text" name="styles" placeholder="Minimalist, Boho, Classic" />
+    </label><br><br>
+
+    <label>Favorite Colors (comma separated):
+      <input type="text" name="colors" placeholder="White, Black, Beige" />
+    </label><br><br>
+
+    <label>Fabric Preferences (comma separated):
+      <input type="text" name="fabrics" placeholder="Cotton, Linen" />
+    </label><br><br>
+
+    <label>Budget Min:
+      <input type="number" name="budget_min" />
+    </label><br><br>
+
+    <label>Budget Max:
+      <input type="number" name="budget_max" />
+    </label><br><br>
+
+    <button type="submit">Get Outfit Recommendations</button>
   </form>
 
-  <!-- Container for Outfit Results -->
   <div id="outfitContainer"></div>
 
   <script>
-    // JavaScript code here: fetch AI outfits, displayOutfits(), refreshOutfit()
-  </script>
-</body>
-</html>
+    const backendUrl = "https://style-safari-backend.vercel.app/api/ai-outfits?secret=stylesafari";
+
+    document.getElementById("profileForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const userProfile = {
+        gender: form.gender.value,
+        styles: form.styles.value.split(",").map(s => s.trim()),
+        colors: form.colors.value.split(",").map(c => c.trim()),
+        fabrics: form.fabrics.value.split(",").map(f => f.trim()),
+        budget_min: parseFloat(form.budget_min.value) || 0,
+        budget_max: parseFloat(form.budget_max.value) || Infinity,
+        lifestyle_tags: []
+      };
+
+      const res = await fetch(backendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userProfile })
+      });
+      const data = await res.json();
+      displayOutfits(data.outfits);
+    });
+
+    function displayOutfits(outfits) {
+      const container = document.getElementById("outfitContainer");
+      container.innerHTML = "";
+      if (!outfits || outfits.length === 0) {
+        container.innerHTML = "<p>No outfits found.</p>";
+        return;
+      }
+
+      outfits.forEach((outfit, idx) => {
+        const div = document.createElement("div");
+        div.classList.add("outfit");
+
+        div.innerHTML = `
+          <h3>Outfit ${idx +
