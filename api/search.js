@@ -1,41 +1,74 @@
-import { connectToDatabase, fetchFromBase44 } from "./helpers.js";
+import { connectToDatabase } from "./helpers.js";
 
 export default async function handler(req, res) {
     try {
         const secret = req.query.secret;
-        if (secret !== process.env.SYNC_SECRET) {
-            return res.status(401).json({ error: "Unauthorized" });
-        }
+        if (secret !== process.env.SYNC_SECRET) return res.status(401).json({ error: "Unauthorized" });
 
         const { db } = await connectToDatabase();
         if (!db) return res.status(500).json({ error: "Missing MongoDB configuration" });
 
-        const { brand, category, minPrice, maxPrice, in_stock, live } = req.query;
-
+        const { q, brand, category, minPrice, maxPrice, in_stock, store } = req.query;
         const query = {};
-        if (brand) query.brand = brand;
+
+        // Brand mapping
+        let searchBrands = [];
+        if (brand) {
+            const mapping = await db.collection("brand_mappings").findOne({ brand_aliases: brand });
+            if (mapping) {
+                searchBrands = mapping.affiliate_brands;
+            } else {
+                searchBrands = [brand];
+            }
+            query.brand = { $in: searchBrands };
+        }
+
+        // Category filter
         if (category) query.category = category;
-        if (in_stock) query.in_stock = in_stock === "true";
+
+        // Price filter
         if (minPrice || maxPrice) {
             query.price = {};
             if (minPrice) query.price.$gte = parseFloat(minPrice);
             if (maxPrice) query.price.$lte = parseFloat(maxPrice);
         }
 
-        // First, search MongoDB
-        let products = await db.collection("products")
+        // In stock filter
+        if (in_stock) query.in_stock = in_stock === "true";
+
+        // Store filter
+        if (store) query.store = store;
+
+        // Multi-keyword search
+        if (q) {
+            const keywords = q.toLowerCase().split(" ");
+            const keywordConditions = keywords.map(word => ({
+                $or: [
+                    { name: { $regex: word, $options: "i" } },
+                    { category: { $regex: word, $options: "i" } },
+                    { tags: { $regex: word, $options: "i" } },
+                    { color: { $regex: word, $options: "i" } }
+                ]
+            }));
+            query.$and = keywordConditions;
+        }
+
+        // Execute search
+        const products = await db.collection("products")
             .find(query)
             .limit(100)
             .toArray();
 
-        // Optional live Base44 search
-        if (live === "true") {
-            const liveProducts = await fetchFromBase44(`entities/ProductFeed?${new URLSearchParams(req.query).toString()}`);
-            products = [...liveProducts, ...products];
+        // Optional: fallback to store-wide if zero results
+        if (products.length === 0 && store) {
+            const fallback = await db.collection("products")
+                .find({ store })
+                .limit(50)
+                .toArray();
+            return res.status(200).json({ count: fallback.length, data: fallback, fallback: true });
         }
 
         res.status(200).json({ count: products.length, data: products });
-
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
