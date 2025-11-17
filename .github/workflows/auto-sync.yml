@@ -1,0 +1,15 @@
+name: Auto Product Sync
+
+# Run every 15 minutes
+on:
+  schedule:
+    - cron: '*/15 * * * *' # every 15 minutes
+  workflow_dispatch: # allows manual trigger from GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Sync
+        run: |
+          curl -X GET "https://style-safari-backend.vercel.app/api/sync?secret=${{ secrets.SYNC_SECRET }}"
