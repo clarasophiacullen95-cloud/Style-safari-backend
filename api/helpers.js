@@ -4,14 +4,16 @@ let cachedClient = null;
 let cachedDb = null;
 
 export async function connectToDatabase() {
-    if (!process.env.MONGODB_URI || !process.env.MONGODB_DB) {
-        throw new Error("Missing MONGODB_URI or MONGODB_DB environment variables");
-    }
+    const uri = process.env.MONGODB_URI;
+    const dbName = process.env.MONGODB_DB;
+
+    if (!uri || !dbName) return { client: null, db: null };
+
     if (cachedClient && cachedDb) return { client: cachedClient, db: cachedDb };
 
-    const client = new MongoClient(process.env.MONGODB_URI);
+    const client = new MongoClient(uri);
     await client.connect();
-    const db = client.db(process.env.MONGODB_DB);
+    const db = client.db(dbName);
 
     cachedClient = client;
     cachedDb = db;
@@ -20,21 +22,20 @@ export async function connectToDatabase() {
 }
 
 export async function fetchFromBase44(path) {
-    if (!process.env.BASE44_API_KEY || !process.env.BASE44_APP_ID) {
-        throw new Error("Missing BASE44_API_KEY or BASE44_APP_ID environment variables");
-    }
+    const apiKey = process.env.BASE44_API_KEY;
+    const appId = process.env.BASE44_APP_ID;
 
-    const url = `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/${path}`;
+    if (!apiKey || !appId) return {};
+
+    const url = `https://app.base44.com/api/apps/${appId}/${path}`;
     const response = await fetch(url, {
-        headers: {
-            "api_key": process.env.BASE44_API_KEY,
-            "Content-Type": "application/json"
-        }
+        headers: { "api_key": apiKey, "Content-Type": "application/json" }
     });
 
     if (!response.ok) {
         const text = await response.text();
         throw new Error(`Base44 API Error ${response.status}: ${text}`);
     }
+
     return response.json();
 }
