@@ -1,57 +1,45 @@
-import { connectToDatabase } from "../lib/db.js";
+import { connectToDatabase } from "./helpers.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+    try {
+        const { db } = await connectToDatabase();
+        const productsCollection = db.collection("products");
 
-  try {
-    const db = await connectToDatabase();
-    const collection = db.collection("products");
+        const {
+            q,
+            brand,
+            category,
+            color,
+            fabric,
+            style,
+            tags,
+            price_min,
+            price_max,
+        } = req.query;
 
-    const {
-      q,             // search text in name/description
-      brand,         // filter by brand
-      category,      // filter by category
-      min_price,     // minimum price
-      max_price,     // maximum price
-      in_stock       // true/false
-    } = req.query;
+        const filter = {};
 
-    const query = {};
+        if (q) {
+            filter.$text = { $search: q };
+        }
 
-    // Text search in name and description
-    if (q) {
-      query.$or = [
-        { name: { $regex: q, $options: "i" } },
-        { description: { $regex: q, $options: "i" } }
-      ];
+        if (brand) filter.brand = brand;
+        if (category) filter.category = category;
+        if (color) filter.color = color;
+        if (fabric) filter.fabric = fabric;
+        if (style) filter.style = style;
+        if (tags) filter.tags = { $in: tags.split(",") };
+
+        if (price_min || price_max) {
+            filter.price = {};
+            if (price_min) filter.price.$gte = Number(price_min);
+            if (price_max) filter.price.$lte = Number(price_max);
+        }
+
+        const results = await productsCollection.find(filter).limit(200).toArray();
+
+        res.json({ count: results.length, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-
-    if (brand) {
-      query.brand = brand;
-    }
-
-    if (category) {
-      query.category = category;
-    }
-
-    if (min_price || max_price) {
-      query.price = {};
-      if (min_price) query.price.$gte = parseFloat(min_price);
-      if (max_price) query.price.$lte = parseFloat(max_price);
-    }
-
-    if (in_stock !== undefined) {
-      query.in_stock = in_stock === "true";
-    }
-
-    // Fetch matching products, limit 100 results
-    const products = await collection.find(query).limit(100).toArray();
-
-    res.status(200).json({ count: products.length, products });
-  } catch (err) {
-    console.error("Search function error:", err);
-    res.status(500).json({ error: err.message });
-  }
 }
