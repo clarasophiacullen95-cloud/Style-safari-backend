@@ -2,44 +2,36 @@ import { connectToDatabase } from "./helpers.js";
 
 export default async function handler(req, res) {
     try {
+        const secret = req.query.secret;
+        if (secret !== process.env.SYNC_SECRET) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
         const { db } = await connectToDatabase();
-        const productsCollection = db.collection("products");
+        if (!db) return res.status(500).json({ error: "Missing MongoDB configuration" });
 
-        const {
-            q,
-            brand,
-            category,
-            color,
-            fabric,
-            style,
-            tags,
-            price_min,
-            price_max,
-        } = req.query;
+        const { brand, category, minPrice, maxPrice, in_stock } = req.query;
 
-        const filter = {};
+        const query = {};
 
-        if (q) {
-            filter.$text = { $search: q };
+        if (brand) query.brand = brand;
+        if (category) query.category = category;
+        if (in_stock) query.in_stock = in_stock === "true";
+
+        if (minPrice || maxPrice) {
+            query.price = {};
+            if (minPrice) query.price.$gte = parseFloat(minPrice);
+            if (maxPrice) query.price.$lte = parseFloat(maxPrice);
         }
 
-        if (brand) filter.brand = brand;
-        if (category) filter.category = category;
-        if (color) filter.color = color;
-        if (fabric) filter.fabric = fabric;
-        if (style) filter.style = style;
-        if (tags) filter.tags = { $in: tags.split(",") };
+        const products = await db.collection("products")
+            .find(query)
+            .limit(100) // limit to avoid timeouts
+            .toArray();
 
-        if (price_min || price_max) {
-            filter.price = {};
-            if (price_min) filter.price.$gte = Number(price_min);
-            if (price_max) filter.price.$lte = Number(price_max);
-        }
-
-        const results = await productsCollection.find(filter).limit(200).toArray();
-
-        res.json({ count: results.length, results });
+        res.status(200).json({ count: products.length, data: products });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ error: err.message });
     }
 }
