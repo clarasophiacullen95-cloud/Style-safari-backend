@@ -1,28 +1,37 @@
-import fetch from "node-fetch";
+import { MongoClient } from "mongodb";
 
-export async function fetchAffiliateProducts() {
-  const APP_ID = process.env.BASE44_APP_ID;
-  const API_KEY = process.env.BASE44_API_KEY;
+let cachedClient = null;
+let cachedDb = null;
 
-  if (!APP_ID || !API_KEY) {
-    throw new Error("BASE44_APP_ID or BASE44_API_KEY not set");
-  }
-
-  const url = `https://app.base44.com/api/apps/${APP_ID}/entities/ProductFeed`;
-
-  const res = await fetch(url, {
-    headers: {
-      'api_key': API_KEY,
-      'Content-Type': 'application/json'
+export async function connectToDatabase() {
+    if (cachedClient && cachedDb) {
+        return { client: cachedClient, db: cachedDb };
     }
-  });
 
-  if (!res.ok) {
-    throw new Error(`Base44 API returned status ${res.status}`);
-  }
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db(process.env.MONGODB_DB);
 
-  const data = await res.json();
+    cachedClient = client;
+    cachedDb = db;
 
-  // Base44 may wrap entities inside a "data" field
-  return data.data || data || [];
+    return { client, db };
+}
+
+export async function fetchFromBase44(path) {
+    const url = `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/${path}`;
+
+    const response = await fetch(url, {
+        headers: {
+            "api_key": process.env.BASE44_API_KEY,
+            "Content-Type": "application/json"
+        }
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Base44 API Error ${response.status}: ${text}`);
+    }
+
+    return response.json();
 }
