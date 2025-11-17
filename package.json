@@ -1,9 +1,13 @@
 {
-  "name": "affiliate-app",
+  "name": "style-safari-backend",
   "version": "1.0.0",
   "type": "module",
+  "main": "api/sync.js",
+  "scripts": {
+    "start": "vercel dev"
+  },
   "dependencies": {
-    "node-fetch": "^3.3.2",
-    "mongodb": "^6.0.0"
+    "mongodb": "^5.8.0",
+    "node-fetch": "^3.3.2"
   }
 }
