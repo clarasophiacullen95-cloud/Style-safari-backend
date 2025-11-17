@@ -8,18 +8,14 @@ export default async function handler(req, res) {
         const { db } = await connectToDatabase();
         if (!db) return res.status(500).json({ error: "Missing MongoDB configuration" });
 
-        const { q, brand, category, minPrice, maxPrice, in_stock, store } = req.query;
+        const { q, brand, category, minPrice, maxPrice, in_stock, store, user_gender } = req.query;
         const query = {};
 
         // Brand mapping
         let searchBrands = [];
         if (brand) {
             const mapping = await db.collection("brand_mappings").findOne({ brand_aliases: brand });
-            if (mapping) {
-                searchBrands = mapping.affiliate_brands;
-            } else {
-                searchBrands = [brand];
-            }
+            searchBrands = mapping ? mapping.affiliate_brands : [brand];
             query.brand = { $in: searchBrands };
         }
 
@@ -53,13 +49,22 @@ export default async function handler(req, res) {
             query.$and = keywordConditions;
         }
 
+        // Gender filter
+        if (user_gender) {
+            query.$or = [
+                { gender: user_gender },
+                { gender: { $exists: false } },
+                { gender: null }
+            ];
+        }
+
         // Execute search
         const products = await db.collection("products")
             .find(query)
             .limit(100)
             .toArray();
 
-        // Optional: fallback to store-wide if zero results
+        // Optional store-wide fallback if zero results
         if (products.length === 0 && store) {
             const fallback = await db.collection("products")
                 .find({ store })
