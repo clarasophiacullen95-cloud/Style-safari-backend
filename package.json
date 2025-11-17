@@ -1,7 +1,7 @@
 {
   "name": "affiliate-app",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
   "dependencies": {
     "node-fetch": "^3.3.2",
     "mongodb": "^6.0.0"
