@@ -4,11 +4,9 @@ export default async function handler(req, res) {
     try {
         const { db } = await connectToDatabase();
 
-        // Fetch product feed from Base44
         const products = await fetchFromBase44("entities/ProductFeed");
-
-        // Save or update products in MongoDB
         const collection = db.collection("products");
+
         for (const product of products) {
             await collection.updateOne(
                 { product_id: product.product_id },
