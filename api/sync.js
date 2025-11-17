@@ -1,50 +1,25 @@
-// /api/sync.js
-import { connectToDatabase } from "../lib/db.js";
+import { fetchFromBase44, connectToDatabase } from "./helpers.js";
 
 export default async function handler(req, res) {
-  const secret = req.query.secret;
-  if (!secret || secret !== process.env.SYNC_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+    try {
+        const { db } = await connectToDatabase();
 
-  try {
-    const db = await connectToDatabase();
+        // Fetch product feed from Base44
+        const products = await fetchFromBase44("entities/ProductFeed");
 
-    // Fetch products from Base44
-    const base44Response = await fetch(
-      `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/entities/ProductFeed`,
-      {
-        headers: {
-          "api_key": process.env.BASE44_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+        // Save or update products in MongoDB
+        const collection = db.collection("products");
+        for (const product of products) {
+            await collection.updateOne(
+                { product_id: product.product_id },
+                { $set: product },
+                { upsert: true }
+            );
+        }
 
-    if (!base44Response.ok) {
-      const errorText = await base44Response.text();
-      return res.status(base44Response.status).json({ error: errorText });
+        res.status(200).json({ message: "Products synced", count: products.length });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
     }
-
-    const products = await base44Response.json();
-
-    // Upsert products into MongoDB
-    const bulkOps = products.map((product) => ({
-      updateOne: {
-        filter: { product_id: product.product_id },
-        update: { $set: product },
-        upsert: true,
-      },
-    }));
-
-    if (bulkOps.length > 0) {
-      const result = await db.collection("products").bulkWrite(bulkOps);
-      return res.json({ message: "Products synced", count: result.upsertedCount + result.modifiedCount });
-    }
-
-    return res.json({ message: "No products to sync", count: 0 });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
 }
