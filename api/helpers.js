@@ -1,14 +1,19 @@
 import fetch from "node-fetch";
 
 export async function fetchAffiliateProducts() {
-  if (!process.env.BASE44_API_KEY || !process.env.BASE44_APP_ID) {
-    throw new Error("BASE44_API_KEY or BASE44_APP_ID not set");
+  const APP_ID = process.env.BASE44_APP_ID;
+  const API_KEY = process.env.BASE44_API_KEY;
+
+  if (!APP_ID || !API_KEY) {
+    throw new Error("BASE44_APP_ID or BASE44_API_KEY not set");
   }
 
-  const res = await fetch("https://api.base44.com/products", {
+  const url = `https://app.base44.com/api/apps/${APP_ID}/entities/ProductFeed`;
+
+  const res = await fetch(url, {
     headers: {
-      "Authorization": `Bearer ${process.env.BASE44_API_KEY}`,
-      "X-App-ID": process.env.BASE44_APP_ID
+      'api_key': API_KEY,
+      'Content-Type': 'application/json'
     }
   });
 
@@ -17,5 +22,5 @@ export async function fetchAffiliateProducts() {
   }
 
   const data = await res.json();
-  return data.products || [];
+  return data || []; // data should be an array of product entities
 }
