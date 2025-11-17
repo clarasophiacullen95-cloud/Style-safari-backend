@@ -1,22 +1,21 @@
-import { connectDB } from '../lib/db';
+import { connectDB } from "../lib/db.js";
 
 export default async function handler(req, res) {
   try {
-    const { q, category, minPrice, maxPrice, rating } = req.query;
+    const { q, category, minPrice, maxPrice } = req.query;
     const db = await connectDB();
 
-    const filters = {};
+    const filter = {};
+    if (q) filter.name = { $regex: q, $options: "i" };
+    if (category) filter.category = category;
+    if (minPrice || maxPrice) filter.price = {};
+    if (minPrice) filter.price.$gte = Number(minPrice);
+    if (maxPrice) filter.price.$lte = Number(maxPrice);
 
-    if (q) filters.name = { $regex: q, $options: 'i' };
-    if (category) filters.category = category;
-    if (minPrice || maxPrice) filters.price = {};
-    if (minPrice) filters.price.$gte = Number(minPrice);
-    if (maxPrice) filters.price.$lte = Number(maxPrice);
-    if (rating) filters.rating = { $gte: Number(rating) };
-
-    const products = await db.collection('products').find(filters).toArray();
+    const products = await db.collection("products").find(filter).toArray();
     res.status(200).json(products);
   } catch (err) {
+    console.error("Search error:", err);
     res.status(500).json({ error: err.message });
   }
 }
