@@ -1,36 +1,50 @@
-import { fetchAffiliateProducts } from "./helpers.js";
+// /api/sync.js
 import { connectToDatabase } from "../lib/db.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  if (req.query.secret !== process.env.SYNC_SECRET) {
+  const secret = req.query.secret;
+  if (!secret || secret !== process.env.SYNC_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   try {
     const db = await connectToDatabase();
-    const products = await fetchAffiliateProducts();
 
-    if (!Array.isArray(products)) {
-      return res.status(500).json({ error: "Invalid Base44 API response" });
+    // Fetch products from Base44
+    const base44Response = await fetch(
+      `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/entities/ProductFeed`,
+      {
+        headers: {
+          "api_key": process.env.BASE44_API_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!base44Response.ok) {
+      const errorText = await base44Response.text();
+      return res.status(base44Response.status).json({ error: errorText });
     }
 
-    const collection = db.collection("products");
+    const products = await base44Response.json();
 
-    for (const product of products) {
-      await collection.updateOne(
-        { product_id: product.product_id },
-        { $set: product },
-        { upsert: true }
-      );
+    // Upsert products into MongoDB
+    const bulkOps = products.map((product) => ({
+      updateOne: {
+        filter: { product_id: product.product_id },
+        update: { $set: product },
+        upsert: true,
+      },
+    }));
+
+    if (bulkOps.length > 0) {
+      const result = await db.collection("products").bulkWrite(bulkOps);
+      return res.json({ message: "Products synced", count: result.upsertedCount + result.modifiedCount });
     }
 
-    res.status(200).json({ message: "Products synced", count: products.length });
+    return res.json({ message: "No products to sync", count: 0 });
   } catch (err) {
-    console.error("Sync function error:", err);
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 }
