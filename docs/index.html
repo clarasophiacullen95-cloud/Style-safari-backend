@@ -1,101 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Style Safari AI Outfits</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    .outfit { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
-    img { max-width: 150px; display: block; margin-bottom: 5px; }
-  </style>
+    <title>Style Safari AI</title>
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Style Safari AI Outfits</h1>
 
-  <form id="profileForm">
-    <label>Gender:
-      <select name="gender">
-        <option value="female">Female</option>
-        <option value="male">Male</option>
-      </select>
-    </label><br><br>
+<div id="app">
+    <h1>Style Safari — AI Stylist</h1>
 
-    <label>Style Preferences (comma separated):
-      <input type="text" name="styles" placeholder="Minimalist, Boho, Classic" />
-    </label><br><br>
+    <input id="searchInput" placeholder="Search outfits or items..." />
 
-    <label>Favorite Colors (comma separated):
-      <input type="text" name="colors" placeholder="White, Black, Beige" />
-    </label><br><br>
+    <button onclick="search()">Search</button>
 
-    <label>Fabric Preferences (comma separated):
-      <input type="text" name="fabrics" placeholder="Cotton, Linen" />
-    </label><br><br>
+    <div id="results"></div>
+</div>
 
-    <label>Budget Min:
-      <input type="number" name="budget_min" />
-    </label><br><br>
-
-    <label>Budget Max:
-      <input type="number" name="budget_max" />
-    </label><br><br>
-
-    <button type="submit">Get Outfit Recommendations</button>
-  </form>
-
-  <div id="outfitContainer"></div>
-
-  <script>
-    const backendUrl = "https://style-safari-backend.vercel.app/api/ai-outfits?secret=stylesafari";
-
-    document.getElementById("profileForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const form = e.target;
-      const userProfile = {
-        gender: form.gender.value,
-        styles: form.styles.value.split(",").map(s => s.trim()),
-        colors: form.colors.value.split(",").map(c => c.trim()),
-        fabrics: form.fabrics.value.split(",").map(f => f.trim()),
-        budget_min: parseFloat(form.budget_min.value) || 0,
-        budget_max: parseFloat(form.budget_max.value) || Infinity,
-        lifestyle_tags: []
-      };
-
-      const res = await fetch(backendUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userProfile })
-      });
-      const data = await res.json();
-      displayOutfits(data.outfits);
-    });
-
-    function displayOutfits(outfits) {
-      const container = document.getElementById("outfitContainer");
-      container.innerHTML = "";
-      if (!outfits || outfits.length === 0) {
-        container.innerHTML = "<p>No outfits found.</p>";
-        return;
-      }
-
-      outfits.forEach((outfit, idx) => {
-        const div = document.createElement("div");
-        div.classList.add("outfit");
-
-        div.innerHTML = `
-          <h3>Outfit ${idx + 1}</h3>
-          ${outfit.top ? `<img src="${outfit.top.image_url}" alt="${outfit.top.name}"><p>Top: ${outfit.top.name} (${outfit.top.brand})</p>` : ''}
-          ${outfit.bottom ? `<img src="${outfit.bottom.image_url}" alt="${outfit.bottom.name}"><p>Bottom: ${outfit.bottom.name} (${outfit.bottom.brand})</p>` : ''}
-          ${outfit.shoes ? `<img src="${outfit.shoes.image_url}" alt="${outfit.shoes.name}"><p>Shoes: ${outfit.shoes.name} (${outfit.shoes.brand})</p>` : ''}
-          <button onclick="refreshOutfit(${idx})">Refresh This Outfit</button>
-        `;
-        container.appendChild(div);
-      });
-    }
-
-    async function refreshOutfit(index) {
-      document.getElementById("profileForm").dispatchEvent(new Event("submit"));
-    }
-  </script>
+<script src="app.js"></script>
 </body>
 </html>
