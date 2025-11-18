@@ -4,40 +4,139 @@
     <meta charset="UTF-8">
     <title>Style Safari AI Stylist</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { text-align: center; }
+        .profile, .outfits, .search { margin-bottom: 30px; }
+        label { display: block; margin: 5px 0 2px; }
+        input, select { width: 200px; margin-bottom: 10px; }
+        button { padding: 8px 16px; margin-top: 10px; cursor: pointer; }
+        .outfit { border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; }
+        .outfit img { max-width: 150px; margin-right: 10px; }
+        .products { display: flex; flex-wrap: wrap; }
+    </style>
 </head>
 <body>
-    <header>
-        <h1>Style Safari</h1>
-        <p>Your AI personal stylist</p>
-    </header>
+    <h1>Style Safari AI Stylist</h1>
 
-    <section class="profile">
-        <h2>Profile</h2>
-        <form id="profileForm">
-            <label>Gender:
-                <select name="gender">
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="unisex">Unisex</option>
-                </select>
-            </label>
-            <label>Style: <input type="text" name="style" placeholder="e.g., minimalist"></label>
-            <label>Budget Min: <input type="number" name="budget_min"></label>
-            <label>Budget Max: <input type="number" name="budget_max"></label>
-            <button type="submit">Get Outfits</button>
-        </form>
-        <button id="refreshBtn">Refresh Products</button>
-    </section>
+    <!-- User Profile Form -->
+    <div class="profile">
+        <h2>Select Your Style Profile</h2>
+        <label>Gender</label>
+        <select id="gender">
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="unisex">Unisex</option>
+        </select>
+        <label>Style Preference</label>
+        <select id="style">
+            <option value="minimalist">Minimalist</option>
+            <option value="boho">Boho</option>
+            <option value="streetwear">Streetwear</option>
+            <option value="classic">Classic</option>
+            <option value="romantic">Romantic</option>
+        </select>
+        <label>Budget Min</label>
+        <input type="number" id="budget_min" value="0">
+        <label>Budget Max</label>
+        <input type="number" id="budget_max" value="1000">
+        <label>Color Preferences (comma separated)</label>
+        <input type="text" id="color_preferences" value="black,white,blue">
+        <button id="generateOutfits">Generate Outfits</button>
+        <button id="refreshOutfits">Refresh Outfits</button>
+    </div>
 
-    <section class="outfits">
+    <!-- Display AI Outfits -->
+    <div class="outfits" id="outfits">
         <h2>AI Outfit Suggestions</h2>
-        <div id="outfits"></div>
-    </section>
+    </div>
 
-    <footer>
-        <p>Style Safari &copy; 2025</p>
-    </footer>
+    <!-- Product Search -->
+    <div class="search">
+        <h2>Search Products</h2>
+        <input type="text" id="searchQuery" placeholder="Search for products...">
+        <button id="searchBtn">Search</button>
+        <div class="products" id="searchResults"></div>
+    </div>
 
-    <script src="app.js"></script>
+    <script>
+        const backendUrl = "https://style-safari-backend.vercel.app";
+
+        async function generateOutfits() {
+            const profile = {
+                gender: document.getElementById("gender").value,
+                style: document.getElementById("style").value,
+                budget_min: parseFloat(document.getElementById("budget_min").value),
+                budget_max: parseFloat(document.getElementById("budget_max").value),
+                color_preferences: document.getElementById("color_preferences").value.split(",").map(c => c.trim())
+            };
+
+            const res = await fetch(`${backendUrl}/api/ai-outfits?secret=stylesafari`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(profile)
+            });
+            const data = await res.json();
+            displayOutfits(data.outfits);
+        }
+
+        function displayOutfits(outfits) {
+            const container = document.getElementById("outfits");
+            container.innerHTML = "<h2>AI Outfit Suggestions</h2>";
+
+            if (!outfits || outfits.length === 0) {
+                container.innerHTML += "<p>No outfits found.</p>";
+                return;
+            }
+
+            outfits.forEach((outfit, idx) => {
+                const div = document.createElement("div");
+                div.className = "outfit";
+                div.innerHTML = `
+                    <h3>Outfit ${idx + 1}</h3>
+                    <p>${outfit.description || "No description"}</p>
+                    <div class="products">
+                        ${outfit.products.map(p => `<div>
+                            <img src="${p.image_url}" alt="${p.name}">
+                            <p>${p.name}<br>${p.price} ${p.currency}</p>
+                        </div>`).join("")}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function searchProducts() {
+            const query = document.getElementById("searchQuery").value.trim();
+            const gender = document.getElementById("gender").value;
+
+            if (!query) return;
+
+            const res = await fetch(`${backendUrl}/api/search?q=${encodeURIComponent(query)}&gender=${gender}`);
+            const products = await res.json();
+
+            const container = document.getElementById("searchResults");
+            container.innerHTML = "";
+
+            if (!products || products.length === 0) {
+                container.innerHTML = "<p>No products found.</p>";
+                return;
+            }
+
+            products.forEach(p => {
+                const div = document.createElement("div");
+                div.style.margin = "5px";
+                div.innerHTML = `
+                    <img src="${p.image_url}" alt="${p.name}">
+                    <p>${p.name}<br>${p.price} ${p.currency}</p>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        document.getElementById("generateOutfits").addEventListener("click", generateOutfits);
+        document.getElementById("refreshOutfits").addEventListener("click", generateOutfits);
+        document.getElementById("searchBtn").addEventListener("click", searchProducts);
+    </script>
 </body>
 </html>
