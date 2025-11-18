@@ -10,7 +10,6 @@ export default async function handler(req, res) {
         const { db } = await connectToDatabase();
 
         const data = await fetchFromBase44("entities/ProductFeed");
-
         const cleaned = data.results.map(normalizeProduct);
 
         for (const product of cleaned) {
@@ -22,7 +21,7 @@ export default async function handler(req, res) {
         }
 
         res.json({ message: "Products synced", count: cleaned.length });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 }
