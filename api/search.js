@@ -1,80 +1,79 @@
-import { connectToDatabase } from "./helpers.js";
+import { connectToDatabase } from "../lib/db.js";
 
 export default async function handler(req, res) {
-    try {
-        const secret = req.query.secret;
-        if (secret !== process.env.SYNC_SECRET) return res.status(401).json({ error: "Unauthorized" });
+    const q = req.query.q;
+    const gender = req.query.gender;
 
-        const { db } = await connectToDatabase();
-        if (!db) return res.status(500).json({ error: "Missing MongoDB configuration" });
+    if (!q) return res.json([]);
 
-        const { q, brand, category, minPrice, maxPrice, in_stock, store, user_gender } = req.query;
+    const { db } = await connectToDatabase();
 
-        const query = {};
+    const keywords = q.toLowerCase().split(" ");   // ["linen", "shirt"]
 
-        // Brand mapping: optional alias mapping collection
-        if (brand) {
-            const mapping = await db.collection("brand_mappings").findOne({ brand_aliases: brand });
-            const searchBrands = mapping ? mapping.affiliate_brands : [brand];
-            query.brand = { $in: searchBrands };
-        }
+    // Common fabrics your system will recognise
+    const fabrics = [
+        "cotton", "linen", "silk", "denim", "wool", "cashmere",
+        "leather", "polyester", "nylon", "satin", "mesh", "jersey"
+    ];
 
-        // Category filter
-        if (category) query.category = category;
+    // Size patterns (XS, S, M, L, XL, XXL, 6, 8, 10 etc.)
+    const sizeRegex = /^(xxs|xs|s|m|l|xl|xxl|\d{1,2})$/;
 
-        // Price filter
-        if (minPrice || maxPrice) {
-            query.price = {};
-            if (minPrice) query.price.$gte = parseFloat(minPrice);
-            if (maxPrice) query.price.$lte = parseFloat(maxPrice);
-        }
+    const fabricKeywords = keywords.filter(k => fabrics.includes(k));
+    const sizeKeywords = keywords.filter(k => sizeRegex.test(k));
+    const normalKeywords = keywords.filter(k => !fabricKeywords.includes(k) && !sizeKeywords.includes(k));
 
-        // Stock filter
-        if (in_stock) query.in_stock = in_stock === "true";
+    const filters = [];
 
-        // Store filter
-        if (store) query.store = store;
-
-        // Multi-keyword search
-        if (q) {
-            const keywords = q.toLowerCase().split(" ");
-            query.$and = keywords.map(word => ({
+    // Keyword matching for name + category
+    if (normalKeywords.length > 0) {
+        filters.push(
+            ...normalKeywords.map(k => ({
                 $or: [
-                    { name: { $regex: word, $options: "i" } },
-                    { category: { $regex: word, $options: "i" } },
-                    { tags: { $regex: word, $options: "i" } },
-                    { color: { $regex: word, $options: "i" } }
+                    { name: { $regex: k, $options: "i" } },
+                    { category: { $regex: k, $options: "i" } },
+                    { tags: { $regex: k, $options: "i" } }
                 ]
-            }));
-        }
-
-        // Gender filter (prioritize store-brand mapping)
-        if (user_gender) {
-            query.$or = [
-                { gender: user_gender.toLowerCase() },  // mapped gender from sync
-                { gender: null },                        // unisex
-                { gender: { $exists: false } }          // fallback
-            ];
-        }
-
-        // Execute search
-        const products = await db.collection("products")
-            .find(query)
-            .limit(100)
-            .toArray();
-
-        // Optional fallback if zero results
-        if (products.length === 0 && store) {
-            const fallback = await db.collection("products")
-                .find({ store })
-                .limit(50)
-                .toArray();
-            return res.status(200).json({ count: fallback.length, data: fallback, fallback: true });
-        }
-
-        res.status(200).json({ count: products.length, data: products });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: err.message });
+            }))
+        );
     }
+
+    // Fabric matching
+    if (fabricKeywords.length > 0) {
+        filters.push(
+            ...fabricKeywords.map(f => ({
+                $or: [
+                    { fabric: { $regex: f, $options: "i" } },
+                    { description: { $regex: f, $options: "i" } }
+                ]
+            }))
+        );
+    }
+
+    // Size matching
+    if (sizeKeywords.length > 0) {
+        filters.push(
+            ...sizeKeywords.map(s => ({
+                $or: [
+                    { size: { $regex: s, $options: "i" } },
+                    { description: { $regex: s, $options: "i" } }
+                ]
+            }))
+        );
+    }
+
+    // FINAL QUERY
+    const query = {
+        $and: [
+            { gender: { $in: [gender, "unisex"] } },
+            ...filters
+        ]
+    };
+
+    const results = await db.collection("products")
+        .find(query)
+        .limit(150)
+        .toArray();
+
+    res.json(results);
 }
