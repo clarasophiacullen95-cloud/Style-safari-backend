@@ -1,5 +1,8 @@
 import { connectToDatabase } from "../lib/db.js";
 import { fetchFromBase44, normalizeProduct } from "../lib/helpers.js";
+import OpenAI from "openai";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
     if (req.query.secret !== process.env.SYNC_SECRET) {
@@ -9,38 +12,38 @@ export default async function handler(req, res) {
     try {
         const { db } = await connectToDatabase();
 
-        // Fetch product feed from Base44
         const data = await fetchFromBase44("entities/ProductFeed");
 
-        // Normalize products and add new fields
-        const cleaned = data.results.map(product => {
+        const cleaned = [];
+
+        for (const product of data.results) {
             const normalized = normalizeProduct(product);
 
-            // Set is_new if product added within last 30 days
-            const lastSynced = new Date(product.last_synced || product.created_at);
-            const now = new Date();
-            const diffDays = (now - lastSynced) / (1000 * 60 * 60 * 24);
-            normalized.is_new = diffDays <= 30;
+            // --- Step 1: Generate embedding for semantic search
+            const textForEmbedding = `${normalized.name || ""} ${normalized.category || ""} ${normalized.brand || ""} ${normalized.fabric || ""} ${normalized.occasion || ""} ${normalized.season || ""}`;
+            
+            try {
+                const embeddingRes = await openai.embeddings.create({
+                    model: "text-embedding-3-small",
+                    input: textForEmbedding
+                });
+                normalized.embedding = embeddingRes.data[0].embedding;
+            } catch (e) {
+                console.error("Error generating embedding for product:", normalized.product_id, e.message);
+                normalized.embedding = null; // fallback
+            }
 
-            // Populate additional fields if available
-            normalized.size = product.size || null;
-            normalized.fabric = product.fabric || null;
-            normalized.occasion = product.occasion || null;
-            normalized.season = product.season || null;
+            cleaned.push(normalized);
 
-            return normalized;
-        });
-
-        // Upsert into MongoDB
-        for (const product of cleaned) {
+            // --- Step 2: Upsert into MongoDB
             await db.collection("products").updateOne(
-                { product_id: product.product_id },
-                { $set: product },
+                { product_id: normalized.product_id },
+                { $set: normalized },
                 { upsert: true }
             );
         }
 
-        res.json({ message: "Products synced in batches", count: cleaned.length });
+        res.json({ message: "Products synced with embeddings", count: cleaned.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
