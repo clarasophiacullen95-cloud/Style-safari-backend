@@ -83,4 +83,19 @@
         div.classList.add("outfit");
 
         div.innerHTML = `
-          <h3>Outfit ${idx +
+          <h3>Outfit ${idx + 1}</h3>
+          ${outfit.top ? `<img src="${outfit.top.image_url}" alt="${outfit.top.name}"><p>Top: ${outfit.top.name} (${outfit.top.brand})</p>` : ''}
+          ${outfit.bottom ? `<img src="${outfit.bottom.image_url}" alt="${outfit.bottom.name}"><p>Bottom: ${outfit.bottom.name} (${outfit.bottom.brand})</p>` : ''}
+          ${outfit.shoes ? `<img src="${outfit.shoes.image_url}" alt="${outfit.shoes.name}"><p>Shoes: ${outfit.shoes.name} (${outfit.shoes.brand})</p>` : ''}
+          <button onclick="refreshOutfit(${idx})">Refresh This Outfit</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function refreshOutfit(index) {
+      document.getElementById("profileForm").dispatchEvent(new Event("submit"));
+    }
+  </script>
+</body>
+</html>
