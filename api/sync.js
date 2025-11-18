@@ -10,7 +10,11 @@ export default async function handler(req, res) {
         const { db } = await connectToDatabase();
 
         const data = await fetchFromBase44("entities/ProductFeed");
-        const cleaned = data.results.map(normalizeProduct);
+
+        // Ensure results is always an array
+        const resultsArray = Array.isArray(data.results) ? data.results : [];
+
+        const cleaned = resultsArray.map(normalizeProduct);
 
         for (const product of cleaned) {
             await db.collection("products").updateOne(
@@ -22,6 +26,7 @@ export default async function handler(req, res) {
 
         res.json({ message: "Products synced", count: cleaned.length });
     } catch (err) {
+        console.error("Sync error:", err); // log full error
         res.status(500).json({ error: err.message });
     }
 }
