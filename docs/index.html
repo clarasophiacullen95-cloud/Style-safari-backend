@@ -1,24 +1,55 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Style Safari AI</title>
-    <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-<div id="app">
-    <h1>Style Safari — AI Stylist</h1>
+<div id="outfits"></div>
+<button id="refreshBtn">Refresh Outfits</button>
 
-    <label>Search Outfits:</label>
-    <input id="searchInput" placeholder="Search outfits or brands..." />
-    <button onclick="search()">Search</button>
+<script>
+const backendUrl = "https://style-safari-backend.vercel.app/api/ai-outfits?secret=stylesafari";
 
-    <h2>AI Outfits</h2>
-    <button onclick="refreshOutfits()">Refresh Outfits</button>
-    <div id="outfits"></div>
+async function fetchOutfits() {
+    const container = document.getElementById("outfits");
+    container.innerHTML = "Loading...";
 
-    <h2>Search Results</h2>
-    <div id="results"></div>
-</div>
-<script src="app.js"></script>
-</body>
-</html>
+    try {
+        const response = await fetch(backendUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                gender: "female",          // replace with user profile
+                style: ["minimalist"],
+                budget_min: 50,
+                budget_max: 1000,
+                wardrobe: []
+            })
+        });
+
+        const data = await response.json();
+
+        // Safe: default to empty array if undefined
+        const outfits = data.outfits || [];
+
+        if (outfits.length === 0) {
+            container.innerHTML = "<p>No outfits could be generated at this time.</p>";
+            return;
+        }
+
+        // Render outfits
+        container.innerHTML = outfits
+            .map((o, i) => `
+                <div style="border:1px solid #ccc; padding:10px; margin:10px 0;">
+                    <h4>Outfit ${i + 1}</h4>
+                    <pre>${JSON.stringify(o, null, 2)}</pre>
+                </div>
+            `)
+            .join("");
+
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = `<p style="color:red">Error fetching outfits: ${err.message}</p>`;
+    }
+}
+
+// Manual refresh button
+document.getElementById("refreshBtn").addEventListener("click", fetchOutfits);
+
+// Fetch on page load
+fetchOutfits();
+</script>
