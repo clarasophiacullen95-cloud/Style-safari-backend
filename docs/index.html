@@ -1,55 +1,124 @@
-<div id="outfits"></div>
-<button id="refreshBtn">Refresh Outfits</button>
-
-<script>
-const backendUrl = "https://style-safari-backend.vercel.app/api/ai-outfits?secret=stylesafari";
-
-async function fetchOutfits() {
-    const container = document.getElementById("outfits");
-    container.innerHTML = "Loading...";
-
-    try {
-        const response = await fetch(backendUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                gender: "female",          // replace with user profile
-                style: ["minimalist"],
-                budget_min: 50,
-                budget_max: 1000,
-                wardrobe: []
-            })
-        });
-
-        const data = await response.json();
-
-        // Safe: default to empty array if undefined
-        const outfits = data.outfits || [];
-
-        if (outfits.length === 0) {
-            container.innerHTML = "<p>No outfits could be generated at this time.</p>";
-            return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Style Safari AI Stylist</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f0f2f5;
         }
 
-        // Render outfits
-        container.innerHTML = outfits
-            .map((o, i) => `
-                <div style="border:1px solid #ccc; padding:10px; margin:10px 0;">
-                    <h4>Outfit ${i + 1}</h4>
-                    <pre>${JSON.stringify(o, null, 2)}</pre>
-                </div>
-            `)
-            .join("");
+        h1 {
+            text-align: center;
+        }
 
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = `<p style="color:red">Error fetching outfits: ${err.message}</p>`;
-    }
-}
+        #refreshBtn {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
 
-// Manual refresh button
-document.getElementById("refreshBtn").addEventListener("click", fetchOutfits);
+        .outfit-card {
+            border: 1px solid #ccc;
+            padding: 12px;
+            margin: 12px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            background: #fff;
+            border-radius: 8px;
+        }
 
-// Fetch on page load
-fetchOutfits();
-</script>
+        .outfit-item {
+            width: 120px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .outfit-item img {
+            width: 100px;
+            height: auto;
+            border-radius: 4px;
+        }
+
+        .outfit-item a {
+            text-decoration: none;
+            color: #0070f3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Style Safari AI Stylist</h1>
+    <button id="refreshBtn">Refresh Outfits</button>
+    <div id="outfits"></div>
+
+    <script>
+        const backendUrl = "https://style-safari-backend.vercel.app/api/ai-outfits?secret=stylesafari";
+
+        async function fetchOutfits() {
+            const container = document.getElementById("outfits");
+            container.innerHTML = "Loading...";
+
+            try {
+                const response = await fetch(backendUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        gender: "female",          // Replace with dynamic user profile
+                        style: ["minimalist"],     // Replace with user-selected style
+                        budget_min: 50,
+                        budget_max: 1000,
+                        wardrobe: []               // Optional: user's wardrobe items
+                    })
+                });
+
+                const data = await response.json();
+                const outfits = data.outfits || [];
+
+                if (outfits.length === 0) {
+                    container.innerHTML = "<p>No outfits could be generated at this time.</p>";
+                    return;
+                }
+
+                // Render outfits
+                container.innerHTML = outfits.map((outfit, i) => `
+                    <div class="outfit-card">
+                        <h3>Outfit ${i + 1}</h3>
+                        ${outfit.products && outfit.products.length > 0
+                            ? outfit.products.map(p => `
+                                <div class="outfit-item">
+                                    <img src="${p.image_url}" alt="${p.name}" />
+                                    <div><b>${p.name}</b></div>
+                                    <div>${p.brand}</div>
+                                    <div>${p.price} ${p.currency}</div>
+                                    <div><a href="${p.affiliate_link}" target="_blank">Buy</a></div>
+                                </div>
+                            `).join("")
+                            : "<p>No products in this outfit</p>"
+                        }
+                    </div>
+                `).join("");
+
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = `<p style="color:red">Error fetching outfits: ${err.message}</p>`;
+            }
+        }
+
+        // Manual refresh button
+        document.getElementById("refreshBtn").addEventListener("click", fetchOutfits);
+
+        // Fetch on page load
+        fetchOutfits();
+    </script>
+</body>
+</html>
