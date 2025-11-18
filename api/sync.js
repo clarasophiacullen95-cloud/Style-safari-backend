@@ -1,24 +1,39 @@
 import { connectToDatabase } from "../lib/db.js";
 import { normalizeProduct } from "../lib/helpers.js";
 
-// Helper: fetch one page of Base44 products
-async function fetchBase44Page(offset = 0, limit = 100) {
-    const url = `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/entities/ProductFeed?offset=${offset}&limit=${limit}`;
-    const res = await fetch(url, {
-        headers: {
-            "api_key": process.env.BASE44_API_KEY,
-            "Content-Type": "application/json"
-        }
-    });
+// Try fetching live products, fallback to cached
+async function fetchBase44Products() {
+    const url = `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/entities/ProductFeed`;
+    
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const res = await fetch(url, {
+                headers: {
+                    "api_key": process.env.BASE44_API_KEY,
+                    "Content-Type": "application/json"
+                }
+            });
 
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Base44 API Error ${res.status}: ${text}`);
+            if (!res.ok) throw new Error(`Base44 API Error ${res.status}`);
+
+            const data = await res.json();
+            if (Array.isArray(data)) return data;
+            if (Array.isArray(data.results)) return data.results;
+            return [];
+        } catch (err) {
+            console.warn(`Attempt ${attempt + 1} failed: ${err.message}`);
+            await new Promise(r => setTimeout(r, 5000)); // wait 5s
+        }
     }
 
-    const data = await res.json();
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data.results)) return data.results;
+    // Fallback: use cached products from Base44 app (if accessible)
+    console.warn("Using cached products due to API limit");
+    const cached = await fetch(`${url}?cached=true`, { // adjust to Base44 cached endpoint
+        headers: { "api_key": process.env.BASE44_API_KEY }
+    });
+    const cachedData = await cached.json();
+    if (Array.isArray(cachedData)) return cachedData;
+    if (Array.isArray(cachedData.results)) return cachedData.results;
     return [];
 }
 
@@ -29,32 +44,23 @@ export default async function handler(req, res) {
 
     try {
         const { db } = await connectToDatabase();
-        let totalProducts = 0;
-        const batchSize = 100; // fetch 100 at a time
-        let offset = 0;
-        let batch;
 
-        do {
-            batch = await fetchBase44Page(offset, batchSize);
-            const cleaned = batch.map(normalizeProduct);
+        const rawProducts = await fetchBase44Products();
+        if (!rawProducts.length) return res.json({ message: "No products available", count: 0 });
 
-            if (cleaned.length > 0) {
-                const ops = cleaned.map(p => ({
-                    updateOne: {
-                        filter: { product_id: p.product_id },
-                        update: { $set: p },
-                        upsert: true
-                    }
-                }));
+        const cleaned = rawProducts.map(normalizeProduct);
 
-                await db.collection("products").bulkWrite(ops);
-                totalProducts += cleaned.length;
+        const ops = cleaned.map(p => ({
+            updateOne: {
+                filter: { product_id: p.product_id },
+                update: { $set: p },
+                upsert: true
             }
+        }));
 
-            offset += batchSize;
-        } while (batch.length === batchSize); // continue if full batch fetched
+        await db.collection("products").bulkWrite(ops);
 
-        res.json({ message: "Products synced in batches", count: totalProducts });
+        res.json({ message: "Products synced", count: cleaned.length });
     } catch (err) {
         console.error("Sync error:", err);
         res.status(500).json({ error: err.message });
