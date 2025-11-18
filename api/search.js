@@ -1,4 +1,7 @@
 import { connectToDatabase } from "../lib/helpers.js";
+import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
     const q = req.query.q?.trim();
@@ -8,50 +11,73 @@ export default async function handler(req, res) {
 
     const { db } = await connectToDatabase();
 
+    // --- Step 1: Phrase + field-aware search (fast)
     const keywords = q.toLowerCase().split(" ");
-
-    // 1️⃣ Phrase-aware: exact match in name or category
     const phraseQuery = {
         gender: { $in: [gender, "unisex"] },
         $or: [
             { name: { $regex: q, $options: "i" } },
             { category: { $regex: q, $options: "i" } },
-            { store_brand_mapping: { $regex: q, $options: "i" } } // store brand mapping
+            { store_brand_mapping: { $regex: q, $options: "i" } },
         ]
     };
 
-    // 2️⃣ Fallback: keyword match in all relevant fields
-    const keywordQuery = {
-        gender: { $in: [gender, "unisex"] },
-        $and: keywords.map(kw => ({
-            $or: [
-                { name: { $regex: kw, $options: "i" } },
-                { category: { $regex: kw, $options: "i" } },
-                { brand: { $regex: kw, $options: "i" } },
-                { store_brand_mapping: { $regex: kw, $options: "i" } }, // store brand mapping
-                { fabric: { $regex: kw, $options: "i" } },
-                { size: { $regex: kw, $options: "i" } },
-                { occasion: { $regex: kw, $options: "i" } },
-                { season: { $regex: kw, $options: "i" } },
-            ]
-        }))
-    };
-
-    // 3️⃣ Try phrase match first
     let results = await db.collection("products")
         .find(phraseQuery)
         .limit(50)
         .toArray();
 
-    // 4️⃣ If no results, use keyword match
+    // --- Step 2: If no results, fallback to keyword search
     if (!results.length) {
+        const keywordQuery = {
+            gender: { $in: [gender, "unisex"] },
+            $and: keywords.map(kw => ({
+                $or: [
+                    { name: { $regex: kw, $options: "i" } },
+                    { category: { $regex: kw, $options: "i" } },
+                    { brand: { $regex: kw, $options: "i" } },
+                    { store_brand_mapping: { $regex: kw, $options: "i" } },
+                    { fabric: { $regex: kw, $options: "i" } },
+                    { size: { $regex: kw, $options: "i" } },
+                    { occasion: { $regex: kw, $options: "i" } },
+                    { season: { $regex: kw, $options: "i" } },
+                ]
+            }))
+        };
+
         results = await db.collection("products")
             .find(keywordQuery)
             .limit(100)
             .toArray();
     }
 
-    // 5️⃣ Sort by is_new and price ascending
+    // --- Step 3: If still no results, use semantic search via OpenAI embeddings
+    if (!results.length) {
+        const embeddingRes = await client.embeddings.create({
+            model: "text-embedding-3-small",
+            input: q
+        });
+
+        const vector = embeddingRes.data[0].embedding;
+
+        // MongoDB Atlas Search required with vector search index on `embedding` field
+        results = await db.collection("products").aggregate([
+            {
+                $search: {
+                    knnBeta: {
+                        vector,
+                        path: "embedding",
+                        k: 25
+                    }
+                }
+            },
+            {
+                $match: { gender: { $in: [gender, "unisex"] } }
+            }
+        ]).toArray();
+    }
+
+    // --- Step 4: Sort results: new products first, then by price ascending
     results.sort((a, b) => {
         if (a.is_new && !b.is_new) return -1;
         if (!a.is_new && b.is_new) return 1;
