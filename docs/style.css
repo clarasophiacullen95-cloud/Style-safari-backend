@@ -1,10 +1,5 @@
-body {
-    font-family: sans-serif;
-    padding: 20px;
-}
-
-img {
-    width: 150px;
-    border-radius: 6px;
-    margin: 10px 0;
-}
+body { font-family: sans-serif; padding: 20px; }
+img { width: 120px; border-radius: 6px; margin: 5px 0; }
+button { margin: 5px 0; padding: 6px 12px; }
+input { width: 250px; padding: 6px; margin: 5px 0; }
+div { margin-bottom: 12px; }
