@@ -7,63 +7,52 @@ export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).end();
 
     const profile = req.body;
-    const gender = profile.gender || "female";
 
     try {
         const { db } = await connectToDatabase();
 
-        // Pull a variety of products for AI to choose from
         const products = await db.collection("products")
             .find({
-                gender: { $in: [gender, gender === "female" ? "women" : "men", "unisex", null, ""] }
+                gender: { $in: [profile.gender, "unisex", null, ""] },
+                price: { $gte: profile.budget_min || 0, $lte: profile.budget_max || 10000 }
             })
-            .limit(250)
             .toArray();
 
-        const ai = await client.chat.completions.create({
+        if (!products.length) return res.json({ outfits: [] });
+
+        const aiPrompt = `
+You are Style Safari's AI stylist. 
+User profile:
+${JSON.stringify(profile)}
+
+Products:
+${JSON.stringify(products)}
+
+Generate 3-5 complete outfit recommendations.
+Each outfit must include product_ids, names, category, style, color, occasion, season, and a short description.
+Be concise and structured in JSON format.
+`;
+
+        const aiResponse = await client.chat.completions.create({
             model: "gpt-4.1",
-            temperature: 0.7,
             messages: [
-                {
-                    role: "system",
-                    content: `
-You are Style Safari’s AI stylist.
-Generate 3–5 complete outfits using ONLY the product list provided.
-
-Return **pure JSON**:
-{
-  "outfits": [
-    {
-      "title": "string",
-      "description": "string",
-      "items": [
-        { "id": "...", "name": "...", "price": ..., "image": "..." }
-      ]
-    }
-  ]
-}
-
-Rules:
-- Outfits must match user's gender, style, and budget.
-- Choose items that genuinely pair well.
-- Avoid duplicate products across outfits.
-- Use seasonal and occasion awareness if available.
-- Pick items that fit user's style aesthetic.
-- Keep JSON safe and valid.
-                    `
-                },
-                {
-                    role: "user",
-                    content: JSON.stringify({ profile, products })
-                }
-            ]
+                { role: "system", content: "You are a fashion stylist AI." },
+                { role: "user", content: aiPrompt }
+            ],
+            temperature: 0.7
         });
 
-        const result = JSON.parse(ai.choices[0].message.content);
+        const text = aiResponse.choices[0].message.content;
 
-        return res.json(result);
+        let outfits = [];
+        try {
+            outfits = JSON.parse(text);
+        } catch {
+            outfits = [{ error: "AI output could not be parsed. Returning raw text.", text }];
+        }
+
+        res.json({ outfits });
     } catch (err) {
-        console.error("AI OUTFIT ERROR:", err);
-        return res.status(500).json({ error: err.message });
+        res.status(500).json({ error: err.message });
     }
 }
