@@ -1,8 +1,5 @@
 import { connectToDatabase } from "../lib/db.js";
 import { fetchFromBase44, normalizeProduct } from "../lib/helpers.js";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
     if (req.query.secret !== process.env.SYNC_SECRET) {
@@ -12,30 +9,33 @@ export default async function handler(req, res) {
     try {
         const { db } = await connectToDatabase();
 
+        // Fetch raw Base44 feed
         const data = await fetchFromBase44("entities/ProductFeed");
-        const cleaned = [];
 
-        for (const product of data.results) {
-            const p = normalizeProduct(product);
+        // Base44 sometimes returns:
+        // - { results: [...] }
+        // - { data: [...] }
+        // - [...]
+        // - { items: [...] }
+        let items = [];
 
-            // Flags
-            const createdDate = new Date(p.last_synced || new Date());
-            const now = new Date();
-            p.is_new = (now - createdDate) / (1000 * 60 * 60 * 24) <= 30;
-            p.is_on_sale = p.sale_price && p.sale_price < p.price;
-
-            // Embeddings
-            const embeddingText = `${p.name} ${p.category} ${p.tags?.join(" ") || ""} ${p.color || ""} ${p.fabric || ""}`;
-            const embeddingRes = await openai.embeddings.create({
-                model: "text-embedding-3-small",
-                input: embeddingText
+        if (Array.isArray(data)) {
+            items = data;
+        } else if (Array.isArray(data.results)) {
+            items = data.results;
+        } else if (Array.isArray(data.data)) {
+            items = data.data;
+        } else if (Array.isArray(data.items)) {
+            items = data.items;
+        } else {
+            return res.status(500).json({
+                error: "Base44 returned unexpected structure",
+                base44_response: data
             });
-            p.embedding = embeddingRes.data[0].embedding;
-
-            cleaned.push(p);
         }
 
-        // Upsert into MongoDB
+        const cleaned = items.map(normalizeProduct);
+
         for (const product of cleaned) {
             await db.collection("products").updateOne(
                 { product_id: product.product_id },
@@ -44,7 +44,10 @@ export default async function handler(req, res) {
             );
         }
 
-        res.json({ message: "Products synced in batches", count: cleaned.length });
+        res.json({
+            message: "Products synced",
+            count: cleaned.length
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
