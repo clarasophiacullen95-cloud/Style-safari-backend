@@ -8,10 +8,16 @@ export default async function handler(req, res) {
 
     try {
         const { db } = await connectToDatabase();
-        const data = await fetchFromBase44("entities/ProductFeed");
-        if (!data.results) return res.status(500).json({ error: "Base44 data.results is undefined" });
 
-        const cleaned = data.results.map(normalizeProduct);
+        const data = await fetchFromBase44("entities/ProductFeed");
+
+        const entities = data.results || data.entities || [];
+
+        if (entities.length === 0) {
+            return res.status(500).json({ error: "No products returned from Base44" });
+        }
+
+        const cleaned = entities.map(normalizeProduct);
 
         for (const product of cleaned) {
             await db.collection("products").updateOne(
@@ -23,6 +29,7 @@ export default async function handler(req, res) {
 
         res.json({ message: "Products synced", count: cleaned.length });
     } catch (err) {
+        console.error("Sync error:", err);
         res.status(500).json({ error: err.message });
     }
 }
