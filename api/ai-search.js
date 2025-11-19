@@ -12,27 +12,20 @@ export default async function handler(req, res) {
     try {
         const { db } = await connectToDatabase();
 
-        // 1️⃣ Preprocess query for category detection
-        let categoryRegex = /.*/; // default: all categories
+        // Map query to category
+        let categoryRegex = /.*/;
         const lowerQ = q.toLowerCase();
+        if (lowerQ.includes("t-shirt") || lowerQ.includes("tee")) categoryRegex = /t-shirt/i;
+        else if (lowerQ.includes("dress")) categoryRegex = /dress/i;
+        else if (lowerQ.includes("shoe")) categoryRegex = /shoe/i;
 
-        if (lowerQ.includes("t-shirt") || lowerQ.includes("tee")) {
-            categoryRegex = /t[- ]?shirt/i;
-        } else if (lowerQ.includes("dress")) {
-            categoryRegex = /dress/i;
-        } else if (lowerQ.includes("shoes")) {
-            categoryRegex = /shoe/i;
-        }
-        // add more mappings as needed
-
-        // 2️⃣ Generate embedding for semantic search
+        // Semantic embedding
         const embeddingResponse = await client.embeddings.create({
             model: "text-embedding-3-small",
             input: q
         });
         const vector = embeddingResponse.data[0].embedding;
 
-        // 3️⃣ Query MongoDB using semantic search and filters
         const results = await db.collection("products").aggregate([
             {
                 $search: {
@@ -49,13 +42,12 @@ export default async function handler(req, res) {
                     category: categoryRegex
                 }
             },
-            { $limit: 25 } // max results
+            { $limit: 25 }
         ]).toArray();
 
-        // 4️⃣ Optional: clean product title for frontend
         const cleanedResults = results.map(p => ({
             ...p,
-            name: p.name.split("&")[0].trim() // remove extra noisy parts
+            name: p.name.split("&")[0].trim()
         }));
 
         res.json(cleanedResults);
