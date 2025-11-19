@@ -3,15 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "vercel dev",
-    "sync": "node api/sync.js"
+    "dev": "vercel dev",
+    "start": "node api/sync.js"
   },
   "dependencies": {
-    "mongodb": "^6.5.0",
-    "openai": "^4.0.0",
-    "node-fetch": "^3.3.2"
-  },
-  "engines": {
-    "node": "22.x"
+    "mongodb": "^5.8.0",
+    "openai": "^4.28.0",
+    "node-fetch": "^3.4.1"
   }
 }
