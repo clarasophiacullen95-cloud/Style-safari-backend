@@ -1,38 +1,43 @@
 import { connectToDatabase } from "../lib/db.js";
-import { fetchFromBase44, normalizeProduct, generateEmbedding } from "../lib/helpers.js";
+import { fetchFromBase44, normalizeProduct } from "../lib/helpers.js";
+import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
-    if (req.query.secret !== process.env.SYNC_SECRET) {
-        return res.status(401).json({ error: "Unauthorized" });
+  if (req.query.secret !== process.env.SYNC_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const { db } = await connectToDatabase();
+
+    const data = await fetchFromBase44("entities/ProductFeed");
+
+    if (!data.results || !Array.isArray(data.results)) {
+      return res.status(500).json({ error: "Base44 data.results is undefined or invalid" });
     }
 
-    try {
-        const { db } = await connectToDatabase();
+    const cleaned = data.results.map(normalizeProduct);
 
-        // Fetch products from Base44
-        const rawProducts = await fetchFromBase44("entities/ProductFeed");
+    for (const product of cleaned) {
+      // Generate embedding for semantic search
+      const embeddingRes = await client.embeddings.create({
+        model: "text-embedding-3-large",
+        input: product.name + " " + product.description,
+      });
 
-        const cleanedProducts = [];
-        for (const p of rawProducts) {
-            const product = normalizeProduct(p);
+      const embedding = embeddingRes.data[0].embedding;
 
-            // Generate AI embedding for search
-            const textForEmbedding = [product.name, product.description, product.brand, product.tags.join(" ")].join(" ");
-            product.embedding = await generateEmbedding(textForEmbedding);
-
-            cleanedProducts.push(product);
-
-            // Upsert in MongoDB
-            await db.collection("products").updateOne(
-                { product_id: product.product_id },
-                { $set: product },
-                { upsert: true }
-            );
-        }
-
-        res.json({ message: "Products synced in batches", count: cleanedProducts.length });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: err.message });
+      await db.collection("products").updateOne(
+        { product_id: product.product_id },
+        { $set: { ...product, embedding } },
+        { upsert: true }
+      );
     }
+
+    res.json({ message: "Products synced in batches", count: cleaned.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
