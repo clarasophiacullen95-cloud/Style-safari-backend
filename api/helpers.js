@@ -1,78 +1,54 @@
-import { MongoClient } from "mongodb";
+export function normalizeProduct(p) {
+    const title = (p.name || "").toLowerCase();
+    const desc = (p.description || "").toLowerCase();
 
-let cachedClient = null;
-let cachedDb = null;
+    const knownClothing = [
+        "shirt","t-shirt","tee","top","blouse","sweater","jumper","hoodie",
+        "dress","gown",
+        "skirt",
+        "coat","jacket","blazer",
+        "trousers","pants","jeans","leggings","shorts",
+        "shoes","sneakers","boots","heels","sandals",
+        "bag","handbag","tote"
+    ];
 
-/**
- * Connect to MongoDB with caching to avoid reconnecting every function call
- */
-export async function connectToDatabase() {
-    if (cachedClient && cachedDb) {
-        return { client: cachedClient, db: cachedDb };
-    }
+    const excluded = [
+        "mug",
+        "tumbler",
+        "cup",
+        "bottle",
+        "gift",
+        "stainless",
+        "insulated",
+        "kitchen",
+        "grocery"
+    ];
 
-    const client = new MongoClient(process.env.MONGODB_URI);
-    await client.connect();
-    const db = client.db(process.env.MONGODB_DB);
+    const isExcluded = excluded.some(w => title.includes(w) || desc.includes(w));
+    const isFashion = knownClothing.some(w => title.includes(w) || desc.includes(w));
 
-    cachedClient = client;
-    cachedDb = db;
-
-    return { client, db };
-}
-
-/**
- * Fetch data from Base44 API
- */
-export async function fetchFromBase44(path) {
-    const url = `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/${path}`;
-
-    const response = await fetch(url, {
-        headers: {
-            "api_key": process.env.BASE44_API_KEY,
-            "Content-Type": "application/json"
-        }
-    });
-
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Base44 API Error ${response.status}: ${text}`);
-    }
-
-    return response.json();
-}
-
-/**
- * Normalize product entity from Base44
- */
-export function normalizeProduct(product) {
-    const now = new Date();
-    const lastSynced = new Date(product.last_synced || product.created_at);
-    const diffDays = (now - lastSynced) / (1000 * 60 * 60 * 24);
+    // Force category
+    let category = p.category;
+    if (isExcluded) category = "non-fashion";
+    else if (!category && isFashion) category = "fashion";
 
     return {
-        product_id: product.product_id,
-        name: product.name || null,
-        brand: product.brand || null,
-        price: product.price || 0,
-        currency: product.currency || "USD",
-        image_url: product.image_url || null,
-        description: product.description || null,
-        category: product.category || null,
-        color: product.color || null,
-        fabric: product.fabric || null,
-        size: product.size || null,
-        affiliate_link: product.affiliate_link || null,
-        product_link: product.product_link || null,
-        in_stock: product.in_stock ?? true,
-        tags: product.tags || [],
-        style: product.style || null,
-        occasion: product.occasion || null,
-        season: product.season || null,
-        is_new: diffDays <= 30,
-        is_bestseller: product.is_bestseller || false,
-        last_synced: product.last_synced || product.created_at || now.toISOString(),
-        feed_source: product.feed_source || null,
-        store_brand_mapping: product.store_brand_mapping || [], // Array of store brands mapping to this product
+        product_id: p.product_id,
+        name: p.name,
+        brand: p.brand,
+        price: p.price,
+        currency: p.currency,
+        image_url: p.image_url,
+        description: p.description,
+        category,
+        color: p.color,
+        affiliate_link: p.affiliate_link,
+        product_link: p.product_link,
+        in_stock: p.in_stock,
+        tags: p.tags || [],
+        occasion: p.occasion || [],
+        season: p.season || [],
+        gender: p.gender || "unisex",
+        feed_source: p.feed_source || "base44"
     };
 }
