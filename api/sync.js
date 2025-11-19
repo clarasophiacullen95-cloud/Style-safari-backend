@@ -2,35 +2,33 @@ import { connectToDatabase } from "../lib/db.js";
 import { fetchFromBase44, normalizeProduct } from "../lib/helpers.js";
 
 export default async function handler(req, res) {
-  if (req.query.secret !== process.env.SYNC_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  try {
-    const { db } = await connectToDatabase();
-
-    // Fetch products from Base44
-    const data = await fetchFromBase44("entities/ProductFeed");
-
-    if (!data || !Array.isArray(data.results)) {
-      return res.status(500).json({ error: "Base44 data.results is undefined or invalid" });
+    if (req.query.secret !== process.env.SYNC_SECRET) {
+        return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Normalize products
-    const cleaned = data.results.map(normalizeProduct);
+    try {
+        const { db } = await connectToDatabase();
 
-    // Upsert into MongoDB
-    for (const product of cleaned) {
-      await db.collection("products").updateOne(
-        { product_id: product.product_id },
-        { $set: product },
-        { upsert: true }
-      );
+        const data = await fetchFromBase44("entities/ProductFeed");
+
+        if (!data || !Array.isArray(data.results)) {
+            console.error("Base44 API returned invalid data:", data);
+            return res.status(500).json({ error: "Base44 data.results is undefined or invalid" });
+        }
+
+        const cleaned = data.results.map(normalizeProduct);
+
+        for (const product of cleaned) {
+            await db.collection("products").updateOne(
+                { product_id: product.product_id },
+                { $set: product },
+                { upsert: true }
+            );
+        }
+
+        res.json({ message: "Products synced", count: cleaned.length });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
     }
-
-    res.json({ message: "Products synced", count: cleaned.length });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
 }
