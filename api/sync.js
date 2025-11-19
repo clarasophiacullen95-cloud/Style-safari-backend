@@ -1,5 +1,5 @@
 import { connectToDatabase } from "../lib/db.js";
-import { fetchFromBase44, normalizeProduct } from "../lib/helpers.js";
+import { fetchFromBase44, normalizeProduct, generateEmbedding } from "../lib/helpers.js";
 
 export default async function handler(req, res) {
     if (req.query.secret !== process.env.SYNC_SECRET) {
@@ -9,20 +9,20 @@ export default async function handler(req, res) {
     try {
         const { db } = await connectToDatabase();
 
-        const data = await fetchFromBase44("entities/ProductFeed");
+        // Fetch products from Base44
+        const rawProducts = await fetchFromBase44("entities/ProductFeed");
 
-        console.log("Raw Base44 data:", data); // <-- log the response
+        const cleanedProducts = [];
+        for (const p of rawProducts) {
+            const product = normalizeProduct(p);
 
-        if (!data || !Array.isArray(data.results)) {
-            return res.status(500).json({
-                error: "Base44 data.results is undefined or invalid",
-                data // <-- include raw data in error for debugging
-            });
-        }
+            // Generate AI embedding for search
+            const textForEmbedding = [product.name, product.description, product.brand, product.tags.join(" ")].join(" ");
+            product.embedding = await generateEmbedding(textForEmbedding);
 
-        const cleaned = data.results.map(normalizeProduct);
+            cleanedProducts.push(product);
 
-        for (const product of cleaned) {
+            // Upsert in MongoDB
             await db.collection("products").updateOne(
                 { product_id: product.product_id },
                 { $set: product },
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
             );
         }
 
-        res.json({ message: "Products synced", count: cleaned.length });
+        res.json({ message: "Products synced in batches", count: cleanedProducts.length });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
