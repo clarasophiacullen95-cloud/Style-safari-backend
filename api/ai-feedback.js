@@ -1,4 +1,4 @@
-import { connectToDatabase } from "../api/helpers.js";
+import { connectToDatabase } from "../lib/db.js";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).end();
@@ -6,7 +6,10 @@ export default async function handler(req, res) {
     const feedback = req.body;
     const { db } = await connectToDatabase();
 
-    await db.collection("feedback").insertOne({ ...feedback, created_at: new Date() });
+    await db.collection("feedback").insertOne({
+        ...feedback,
+        created_at: new Date()
+    });
 
     res.json({ success: true });
 }
