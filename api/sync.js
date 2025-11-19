@@ -11,18 +11,21 @@ export default async function handler(req, res) {
 
     const data = await fetchFromBase44("entities/ProductFeed");
 
-    // Use the fixed results
-    const cleaned = data.results.map(normalizeProduct);
+    const cleaned = [];
 
-    for (const product of cleaned) {
+    // Process sequentially to handle async embeddings
+    for (const product of data.results) {
+      const normalized = await normalizeProduct(product);
+      cleaned.push(normalized);
+
       await db.collection("products").updateOne(
-        { product_id: product.product_id },
-        { $set: product },
+        { product_id: normalized.product_id },
+        { $set: normalized },
         { upsert: true }
       );
     }
 
-    res.json({ message: "Products synced", count: cleaned.length });
+    res.json({ message: "Products synced in batches", count: cleaned.length });
   } catch (err) {
     res.status(500).json({ error: err.message, data: err.data || null });
   }
