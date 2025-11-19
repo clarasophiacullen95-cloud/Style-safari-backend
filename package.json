@@ -1,30 +1,14 @@
 {
   "name": "style-safari-backend",
   "version": "1.0.0",
-  "description": "Backend for Style Safari AI stylist app",
   "type": "module",
-  "main": "app.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "vercel dev"
-  },
-  "engines": {
-    "node": "22.x"
+    "dev": "vercel dev",
+    "start": "node api/sync.js"
   },
   "dependencies": {
-    "openai": "^4.12.0",
+    "mongodb": "^6.10.0",
     "node-fetch": "^3.3.2",
-    "mongodb": "^5.9.0",
-    "dotenv": "^16.3.1"
-  },
-  "devDependencies": {},
-  "keywords": [
-    "style",
-    "safari",
-    "ai",
-    "fashion",
-    "backend"
-  ],
-  "author": "Your Name",
-  "license": "MIT"
+    "openai": "^4.23.0"
+  }
 }
