@@ -1,161 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Style Safari AI Stylist</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Style Safari AI Stylist</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Style Safari</h1>
+<h1>Style Safari AI Stylist</h1>
+<form id="profile-form">
+  <label>Gender: <select id="gender"><option>female</option><option>male</option></select></label>
+  <button type="submit">Curate Outfits</button>
+</form>
+<div id="outfits"></div>
 
-    <!-- User Profile Section -->
-    <div class="profile">
-        <h2>Select Your Style Profile</h2>
+<script>
+const backendUrl = "https://style-safari-backend.vercel.app/api/ai-outfits";
 
-        <label>Gender</label>
-        <select id="gender">
-            <option value="female">Female</option>
-            <option value="male">Male</option>
-            <option value="unisex">Unisex</option>
-        </select>
+document.getElementById("profile-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const gender = document.getElementById("gender").value;
 
-        <label>Style Preference</label>
-        <select id="style">
-            <option value="minimalist">Minimalist</option>
-            <option value="boho">Boho</option>
-            <option value="streetwear">Streetwear</option>
-            <option value="classic">Classic</option>
-        </select>
+  const res = await fetch(backendUrl, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ gender })
+  });
 
-        <label>Budget Min</label>
-        <input type="number" id="budget_min" value="0">
-
-        <label>Budget Max</label>
-        <input type="number" id="budget_max" value="1000">
-
-        <label>Color Preferences (comma separated)</label>
-        <input type="text" id="color_preferences" value="black,white,blue">
-
-        <!-- Action Buttons -->
-        <button id="generateOutfits">Generate Outfits</button>
-        <button id="refreshOutfits">Refresh Outfits</button>
-
-        <!-- Manual Sync -->
-        <button id="manualSync">Refresh Products Now</button>
-        <p id="syncStatus" style="margin-top:10px; color: green;"></p>
-    </div>
-
-    <!-- Outfit Results -->
-    <div class="outfits" id="outfits"></div>
-
-    <!-- Search Section -->
-    <div class="search">
-        <h2>Search Products</h2>
-        <input type="text" id="searchQuery" placeholder="e.g. white t-shirt">
-        <button id="searchBtn">Search</button>
-    </div>
-
-    <!-- Search Results -->
-    <div class="products" id="searchResults"></div>
-
-    <script>
-        const backendUrl = "https://style-safari-backend.vercel.app";
-
-        // Generate AI Outfits
-        async function generateOutfits() {
-            const profile = {
-                gender: document.getElementById("gender").value,
-                style: document.getElementById("style").value,
-                budget_min: Number(document.getElementById("budget_min").value),
-                budget_max: Number(document.getElementById("budget_max").value),
-                color_preferences: document.getElementById("color_preferences").value.split(",").map(s => s.trim())
-            };
-
-            const outfitsEl = document.getElementById("outfits");
-            outfitsEl.innerHTML = "Loading AI outfits...";
-
-            try {
-                const res = await fetch(`${backendUrl}/api/ai-outfits`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(profile)
-                });
-                const data = await res.json();
-
-                outfitsEl.innerHTML = "";
-                data.forEach((outfit, idx) => {
-                    const div = document.createElement("div");
-                    div.classList.add("outfit");
-                    div.innerHTML = `<h3>Outfit ${idx + 1}</h3><div class="products">${outfit.products.map(p => `
-                        <div>
-                            <img src="${p.image_url}" alt="${p.name}">
-                            <p>${p.name}<br>${p.brand}</p>
-                        </div>`).join("")}</div>`;
-                    outfitsEl.appendChild(div);
-                });
-            } catch (err) {
-                outfitsEl.innerHTML = `Error loading outfits: ${err.message}`;
-            }
-        }
-
-        document.getElementById("generateOutfits").addEventListener("click", generateOutfits);
-
-        // Manual Product Sync
-        async function manualSyncProducts() {
-            const statusEl = document.getElementById("syncStatus");
-            statusEl.textContent = "Syncing products...";
-
-            try {
-                const res = await fetch(`${backendUrl}/api/sync?secret=stylesafari`);
-                const data = await res.json();
-
-                if (data.error) {
-                    statusEl.style.color = "red";
-                    statusEl.textContent = `Error: ${data.error}`;
-                } else {
-                    statusEl.style.color = "green";
-                    statusEl.textContent = `Products synced successfully! Total: ${data.count}`;
-                }
-            } catch (err) {
-                statusEl.style.color = "red";
-                statusEl.textContent = `Sync failed: ${err.message}`;
-            }
-        }
-
-        document.getElementById("manualSync").addEventListener("click", manualSyncProducts);
-
-        // Product Search
-        async function searchProducts() {
-            const query = document.getElementById("searchQuery").value.trim();
-            if (!query) return;
-
-            const gender = document.getElementById("gender").value;
-            const resultsEl = document.getElementById("searchResults");
-            resultsEl.innerHTML = "Searching products...";
-
-            try {
-                const res = await fetch(`${backendUrl}/api/ai-search?q=${encodeURIComponent(query)}&gender=${gender}`);
-                const data = await res.json();
-
-                resultsEl.innerHTML = "";
-                if (data.length === 0) {
-                    resultsEl.innerHTML = "No results found.";
-                    return;
-                }
-
-                data.forEach(p => {
-                    const div = document.createElement("div");
-                    div.innerHTML = `<img src="${p.image_url}" alt="${p.name}">
-                                     <p>${p.name}<br>${p.brand}</p>`;
-                    resultsEl.appendChild(div);
-                });
-            } catch (err) {
-                resultsEl.innerHTML = `Error searching products: ${err.message}`;
-            }
-        }
-
-        document.getElementById("searchBtn").addEventListener("click", searchProducts);
-    </script>
+  const outfits = await res.json();
+  document.getElementById("outfits").innerHTML = JSON.stringify(outfits, null, 2);
+});
+</script>
 </body>
 </html>
