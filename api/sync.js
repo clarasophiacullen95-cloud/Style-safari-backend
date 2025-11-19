@@ -11,9 +11,13 @@ export default async function handler(req, res) {
 
         const data = await fetchFromBase44("entities/ProductFeed");
 
+        console.log("Raw Base44 data:", data); // <-- log the response
+
         if (!data || !Array.isArray(data.results)) {
-            console.error("Base44 API returned invalid data:", data);
-            return res.status(500).json({ error: "Base44 data.results is undefined or invalid" });
+            return res.status(500).json({
+                error: "Base44 data.results is undefined or invalid",
+                data // <-- include raw data in error for debugging
+            });
         }
 
         const cleaned = data.results.map(normalizeProduct);
