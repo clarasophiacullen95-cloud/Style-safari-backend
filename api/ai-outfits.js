@@ -17,11 +17,11 @@ export default async function handler(req, res) {
       .toArray();
 
     const ai = await client.chat.completions.create({
-      model: "gpt-5-mini",  // <- updated here
+      model: "gpt-5-mini",
       messages: [
         {
           role: "system",
-          content: "You are Style Safari's AI stylist. Create outfits using provided products."
+          content: "You are Style Safari's AI stylist. Create 3-5 outfit recommendations using the provided products."
         },
         {
           role: "user",
