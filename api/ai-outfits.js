@@ -5,8 +5,8 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).end();
-    const profile = req.body;
 
+    const profile = req.body;
     try {
         const { db } = await connectToDatabase();
         const products = await db.collection("products")
@@ -17,18 +17,13 @@ export default async function handler(req, res) {
         const ai = await client.chat.completions.create({
             model: "gpt-5-mini",
             messages: [
-                { role: "system", content: "You are Style Safari's AI stylist. Recommend outfits using provided products." },
+                { role: "system", content: "You are Style Safari's AI stylist. Create 3-5 outfit recommendations using provided products." },
                 { role: "user", content: JSON.stringify({ profile, products }) }
             ]
         });
 
-        const content = ai.choices[0].message.content;
-        const outfits = JSON.parse(content); // ensure AI returns valid JSON
-
-        res.json(outfits);
-
+        res.json(JSON.parse(ai.choices[0].message.content));
     } catch (e) {
-        console.error("AI error:", e.message);
         res.status(500).json({ error: e.message });
     }
 }
