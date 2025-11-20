@@ -3,26 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Style Safari AI</title>
+<title>Style Safari</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
 <h1>Style Safari AI Stylist</h1>
 
 <div class="profile">
-    <h2>Set Your Profile</h2>
-    <label>Gender</label>
-    <select id="gender"><option value="female">Female</option><option value="male">Male</option></select>
-    <label>Style</label>
-    <input id="style" placeholder="e.g., boho, minimalist">
-    <button onclick="fetchOutfits()">Curate My Looks</button>
+  <h2>Select Your Style Profile</h2>
+  <label>Gender</label>
+  <select id="gender"><option value="female">Female</option><option value="male">Male</option></select>
+  <button id="curate">Curate My Looks</button>
 </div>
 
 <div class="search">
-    <h2>Search Products</h2>
-    <input id="searchQuery" placeholder="e.g., white t-shirt">
-    <button onclick="searchProducts()">Search</button>
-    <button onclick="manualRefresh()">Refresh Products</button>
+  <h2>Search Products</h2>
+  <input id="searchQuery" placeholder="e.g. White T-Shirt">
+  <button id="searchBtn">Search</button>
 </div>
 
 <div class="outfits" id="outfits"></div>
@@ -31,38 +29,27 @@
 <script>
 const backendUrl = "https://style-safari-backend.vercel.app/api";
 
-async function fetchOutfits() {
-    const gender = document.getElementById("gender").value;
-    const style = document.getElementById("style").value;
-    const res = await fetch(`${backendUrl}/ai-outfits`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gender, style })
-    });
-    const data = await res.json();
-    const container = document.getElementById("outfits");
-    container.innerHTML = "";
-    data.forEach((outfit, i) => {
-        const div = document.createElement("div");
-        div.className = "outfit";
-        div.innerHTML = `<h3>Outfit ${i+1}</h3><div class="products">${outfit.products.map(p => `<div><img src="${p.image_url}"><p>${p.name}</p></div>`).join("")}</div>`;
-        container.appendChild(div);
-    });
-}
+document.getElementById("curate").onclick = async () => {
+  const gender = document.getElementById("gender").value;
+  const res = await fetch(`${backendUrl}/ai-outfits`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ gender })
+  });
+  const data = await res.json();
+  const container = document.getElementById("outfits");
+  container.innerHTML = JSON.stringify(data, null, 2);
+};
 
-async function searchProducts() {
-    const q = document.getElementById("searchQuery").value;
-    const gender = document.getElementById("gender").value;
-    const res = await fetch(`${backendUrl}/ai-search?q=${encodeURIComponent(q)}&gender=${gender}`);
-    const data = await res.json();
-    const container = document.getElementById("products");
-    container.innerHTML = data.map(p => `<div><img src="${p.image_url}"><p>${p.name}</p></div>`).join("");
-}
-
-async function manualRefresh() {
-    const res = await fetch(`${backendUrl}/sync?secret=stylesafari`);
-    alert(await res.json().then(d => JSON.stringify(d)));
-}
+document.getElementById("searchBtn").onclick = async () => {
+  const q = document.getElementById("searchQuery").value;
+  const gender = document.getElementById("gender").value;
+  const res = await fetch(`${backendUrl}/ai-search?q=${encodeURIComponent(q)}&gender=${gender}`);
+  const data = await res.json();
+  const container = document.getElementById("products");
+  container.innerHTML = JSON.stringify(data, null, 2);
+};
 </script>
+
 </body>
 </html>
