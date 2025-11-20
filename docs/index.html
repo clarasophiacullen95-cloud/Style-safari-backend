@@ -1,68 +1,131 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Style Safari AI Stylist</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Style Safari</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>Style Safari AI Stylist</h1>
 
-<div class="profile">
-    <h2>Select Style Profile</h2>
-    <label>Gender:</label>
+  <h1>Style Safari AI Stylist</h1>
+
+  <!-- User Profile Form -->
+  <div class="profile">
+    <h2>Create Your Profile</h2>
+    <label for="gender">Gender:</label>
     <select id="gender">
-        <option value="female">Female</option>
-        <option value="male">Male</option>
-        <option value="unisex">Unisex</option>
+      <option value="female">Female</option>
+      <option value="male">Male</option>
+      <option value="unisex">Unisex</option>
     </select>
+
+    <label for="style">Style:</label>
+    <input type="text" id="style" placeholder="e.g., minimalist, boho">
+
+    <label for="budget">Budget ($):</label>
+    <input type="number" id="budget" placeholder="e.g., 200">
+
+    <label for="occasion">Occasion:</label>
+    <input type="text" id="occasion" placeholder="e.g., work, party">
+
     <button id="curate">Curate My Looks</button>
-</div>
+  </div>
 
-<div class="search">
+  <!-- Search Form -->
+  <div class="search">
     <h2>Search Products</h2>
-    <input type="text" id="searchQuery" placeholder="Search for items">
+    <input type="text" id="searchQuery" placeholder="Search for items...">
     <button id="searchBtn">Search</button>
-</div>
+  </div>
 
-<div class="outfits" id="outfits"></div>
-<div class="products" id="products"></div>
+  <!-- Outfits Display -->
+  <div class="outfits" id="outfits"></div>
 
-<script>
-const backendUrl = "https://style-safari-backend.vercel.app/api";
+  <!-- Search Results -->
+  <div class="products" id="searchResults"></div>
 
-document.getElementById("curate").addEventListener("click", async () => {
-    const gender = document.getElementById("gender").value;
-    const res = await fetch(`${backendUrl}/ai-outfits`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({gender})
-    });
-    const outfits = await res.json();
-    const container = document.getElementById("outfits");
-    container.innerHTML = "";
-    outfits.forEach((o, i) => {
-        const div = document.createElement("div");
-        div.className = "outfit";
-        div.innerHTML = `<h3>Outfit ${i+1}</h3>` + o.products.map(p => `<div><img src="${p.image_url}"><p>${p.name}</p></div>`).join("");
-        container.appendChild(div);
-    });
-});
+  <script>
+    const outfitsContainer = document.getElementById("outfits");
+    const searchResultsContainer = document.getElementById("searchResults");
 
-document.getElementById("searchBtn").addEventListener("click", async () => {
-    const q = document.getElementById("searchQuery").value;
-    const gender = document.getElementById("gender").value;
-    const res = await fetch(`${backendUrl}/ai-search?q=${encodeURIComponent(q)}&gender=${gender}`);
-    const results = await res.json();
-    const container = document.getElementById("products");
-    container.innerHTML = "";
-    results.forEach(p => {
-        const div = document.createElement("div");
-        div.innerHTML = `<img src="${p.image_url}"><p>${p.name}</p>`;
-        container.appendChild(div);
-    });
-});
-</script>
+    async function curateLooks() {
+      const profile = {
+        gender: document.getElementById("gender").value,
+        style: document.getElementById("style").value,
+        budget: Number(document.getElementById("budget").value),
+        occasion: document.getElementById("occasion").value.split(",").map(s => s.trim())
+      };
+
+      outfitsContainer.innerHTML = "<p>Loading outfits...</p>";
+
+      try {
+        const res = await fetch("/api/ai-outfits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(profile)
+        });
+        const outfits = await res.json();
+
+        if (!Array.isArray(outfits) || !outfits.length) {
+          outfitsContainer.innerHTML = "<p>No outfits found.</p>";
+          return;
+        }
+
+        outfitsContainer.innerHTML = outfits.map((outfit, idx) => `
+          <div class="outfit">
+            <h3>Outfit ${idx + 1}</h3>
+            <div class="products">
+              ${outfit.products.map(p => `
+                <div>
+                  <img src="${p.image_url}" alt="${p.name}">
+                  <p>${p.name}</p>
+                  <p>$${p.price}</p>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("");
+
+      } catch (err) {
+        outfitsContainer.innerHTML = "<p>Error loading outfits.</p>";
+        console.error(err);
+      }
+    }
+
+    async function searchProducts() {
+      const query = document.getElementById("searchQuery").value;
+      const gender = document.getElementById("gender").value;
+
+      if (!query) return;
+
+      searchResultsContainer.innerHTML = "<p>Searching...</p>";
+
+      try {
+        const res = await fetch(`/api/ai-search?q=${encodeURIComponent(query)}&gender=${encodeURIComponent(gender)}`);
+        const products = await res.json();
+
+        if (!Array.isArray(products) || !products.length) {
+          searchResultsContainer.innerHTML = "<p>No products found.</p>";
+          return;
+        }
+
+        searchResultsContainer.innerHTML = products.map(p => `
+          <div>
+            <img src="${p.image_url}" alt="${p.name}">
+            <p>${p.name}</p>
+            <p>$${p.price}</p>
+          </div>
+        `).join("");
+
+      } catch (err) {
+        searchResultsContainer.innerHTML = "<p>Error fetching products.</p>";
+        console.error(err);
+      }
+    }
+
+    document.getElementById("curate").addEventListener("click", curateLooks);
+    document.getElementById("searchBtn").addEventListener("click", searchProducts);
+  </script>
 </body>
 </html>
