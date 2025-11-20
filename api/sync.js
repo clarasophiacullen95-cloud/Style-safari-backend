@@ -1,22 +1,7 @@
-import { connectToDatabase } from "../lib/db.js";
-import { fetchFromBase44, normalizeProduct } from "../lib/helpers.js";
-
-const MAX_RETRIES = 3;
-const BATCH_SIZE = 500;
-
-async function fetchWithRetry(endpoint, retries = MAX_RETRIES) {
-    let attempt = 0;
-    while (attempt < retries) {
-        try {
-            const data = await fetchFromBase44(endpoint);
-            if (data && Array.isArray(data.results)) return data.results;
-            throw new Error("data.results is undefined or invalid");
-        } catch (err) {
-            attempt++;
-            if (attempt >= retries) throw err;
-        }
-    }
-}
+import { connectToDatabase } from "../../lib/db.js";
+import { normalizeProduct } from "../../lib/helpers.js";
+import { generateEmbedding } from "../../lib/embeddings.js";
+import fetch from "node-fetch";
 
 export default async function handler(req, res) {
     if (req.query.secret !== process.env.SYNC_SECRET) {
@@ -26,42 +11,50 @@ export default async function handler(req, res) {
     try {
         const { db } = await connectToDatabase();
 
-        // Fetch ProductFeed safely
-        let results;
-        try {
-            results = await fetchWithRetry("entities/ProductFeed");
-        } catch (err) {
-            // fallback to cached products in DB if Base44 fails
-            const cached = await db.collection("products").find().toArray();
-            return res.json({
-                message: "Base44 fetch failed, using cached products",
-                count: cached.length,
-                error: err.message,
+        const response = await fetch(
+            `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/entities/ProductFeed`,
+            {
+                headers: {
+                    "api_key": process.env.BASE44_API_KEY,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        const raw = await response.json();
+
+        // 🔥 FIX: Accept Base44 array OR object format
+        const results = Array.isArray(raw)
+            ? raw
+            : raw.results || raw.data || [];
+
+        if (!Array.isArray(results)) {
+            return res.status(500).json({
+                error: "Base44 response not array",
+                raw
             });
         }
 
-        // Normalize products
-        const cleaned = results.map(normalizeProduct);
+        let synced = 0;
 
-        // Batch upserts
-        for (let i = 0; i < cleaned.length; i += BATCH_SIZE) {
-            const batch = cleaned.slice(i, i + BATCH_SIZE);
-            const bulkOps = batch.map(product => ({
-                updateOne: {
-                    filter: { product_id: product.product_id },
-                    update: { $set: product },
-                    upsert: true,
-                },
-            }));
-            if (bulkOps.length) {
-                await db.collection("products").bulkWrite(bulkOps);
-            }
+        for (const item of results) {
+            const product = normalizeProduct(item);
+            const embedding = await generateEmbedding(product);
+
+            await db.collection("products").updateOne(
+                { product_id: product.product_id },
+                { $set: { ...product, embedding, last_synced: new Date() } },
+                { upsert: true }
+            );
+
+            synced++;
         }
 
         res.json({
-            message: "Products synced (with cache fallback and batching)",
-            count: cleaned.length,
+            message: "Products synced",
+            count: synced
         });
+
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
