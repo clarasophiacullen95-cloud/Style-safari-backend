@@ -1,8 +1,24 @@
 import { connectToDatabase } from "../lib/db.js";
-import { fetchFromBase44, normalizeProduct } from "../lib/helpers.js";
+import { normalizeProduct } from "../lib/helpers.js";
+import OpenAI from "openai";
 
-const BATCH_SIZE = 200; // number of products per batch
-const MAX_RETRIES = 3;
+const client = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
+async function fetchFromBase44(entity) {
+  try {
+    const res = await fetch(`https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/entities/${entity}`, {
+      headers: {
+        "api_key": process.env.BASE44_API_KEY,
+        "Content-Type": "application/json"
+      }
+    });
+    const data = await res.json();
+    return data;
+  } catch (e) {
+    console.error("Base44 fetch error:", e.message);
+    return null;
+  }
+}
 
 export default async function handler(req, res) {
   if (req.query.secret !== process.env.SYNC_SECRET) {
@@ -12,59 +28,59 @@ export default async function handler(req, res) {
   try {
     const { db } = await connectToDatabase();
 
-    let allProducts = [];
-    let page = 0;
-    let hasMore = true;
+    // Fetch products
+    const rawData = await fetchFromBase44("entities/ProductFeed");
+    const dataArray = Array.isArray(rawData) ? rawData : rawData?.results;
 
-    while (hasMore) {
-      let attempts = 0;
-      let batchData;
+    if (!dataArray || !Array.isArray(dataArray)) {
+      return res.status(500).json({ error: "Base44 data.results is undefined or invalid" });
+    }
 
-      while (attempts < MAX_RETRIES) {
-        try {
-          batchData = await fetchFromBase44("entities/ProductFeed", {
-            limit: BATCH_SIZE,
-            offset: page * BATCH_SIZE,
-          });
-          break; // success
-        } catch (err) {
-          attempts++;
-          console.warn(`Batch ${page} failed (attempt ${attempts}):`, err.message);
-          if (attempts >= MAX_RETRIES) batchData = null;
+    // Batch processing to avoid rate limits
+    const batchSize = 50;
+    for (let i = 0; i < dataArray.length; i += batchSize) {
+      const batch = dataArray.slice(i, i + batchSize);
+
+      for (const raw of batch) {
+        const product = normalizeProduct(raw);
+
+        // Mark new products (added in last 30 days)
+        product.is_new = product.last_synced
+          ? (new Date() - new Date(product.last_synced)) / (1000 * 60 * 60 * 24) <= 30
+          : false;
+
+        // Upsert into MongoDB
+        await db.collection("products").updateOne(
+          { product_id: product.product_id },
+          { $set: { ...product, last_synced: new Date() } },
+          { upsert: true }
+        );
+
+        // Generate embedding if OpenAI available
+        if (client) {
+          try {
+            const embeddingRes = await client.embeddings.create({
+              model: "text-embedding-3-large",
+              input: product.name + " " + (product.description || "")
+            });
+            const vector = embeddingRes.data[0].embedding;
+            await db.collection("products").updateOne(
+              { product_id: product.product_id },
+              { $set: { embedding: vector } }
+            );
+          } catch (err) {
+            console.error(`Embedding generation failed for ${product.product_id}`, err.message);
+          }
         }
       }
 
-      if (!batchData || !batchData.results || batchData.results.length === 0) {
-        console.warn(`Batch ${page} returned no data. Using cached products.`);
-        break; // stop fetching more batches
-      }
-
-      const cleaned = batchData.results.map(normalizeProduct);
-      allProducts.push(...cleaned);
-
-      // Upsert each product in MongoDB
-      for (const product of cleaned) {
-        await db.collection("products").updateOne(
-          { product_id: product.product_id },
-          { $set: product },
-          { upsert: true }
-        );
-      }
-
-      // If less than batch size returned, we've reached the end
-      if (batchData.results.length < BATCH_SIZE) {
-        hasMore = false;
-      } else {
-        page++;
-      }
+      // Small delay between batches to avoid hitting rate limits
+      await new Promise(r => setTimeout(r, 1000));
     }
 
-    res.json({
-      message: "Products synced (with cache fallback and batching)",
-      count: allProducts.length,
-    });
+    res.json({ message: "Products synced (with cache fallback and batching)", count: dataArray.length });
   } catch (err) {
-    console.error("Sync failed:", err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 }
