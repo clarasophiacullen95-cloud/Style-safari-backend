@@ -4,28 +4,28 @@ import { connectToDatabase } from "../lib/db.js";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end();
+    if (req.method !== "POST") return res.status(405).end();
 
-  const profile = req.body;
+    const profile = req.body;
 
-  try {
-    const { db } = await connectToDatabase();
-    const products = await db.collection("products")
-      .find({ gender: profile.gender })
-      .limit(150)
-      .toArray();
+    try {
+        const { db } = await connectToDatabase();
 
-    const ai = await client.chat.completions.create({
-      model: "gpt-5-mini",
-      messages: [
-        { role: "system", content: "You are Style Safari's AI stylist. Create 3-5 outfit suggestions using provided products." },
-        { role: "user", content: JSON.stringify({ profile, products }) }
-      ]
-    });
+        const products = await db.collection("products")
+            .find({ gender: profile.gender })
+            .limit(150)
+            .toArray();
 
-    res.json(JSON.parse(ai.choices[0].message.content));
-  } catch (err) {
-    console.error("AI outfits failed:", err);
-    res.status(500).json({ error: err.message });
-  }
+        const ai = await client.chat.completions.create({
+            model: "gpt-5-mini",
+            messages: [
+                { role: "system", content: "You are Style Safari's AI stylist. Create 3-5 outfit recommendations using provided products." },
+                { role: "user", content: JSON.stringify({ profile, products }) }
+            ]
+        });
+
+        res.status(200).json(JSON.parse(ai.choices[0].message.content));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 }
