@@ -12,20 +12,26 @@ export default async function handler(req, res) {
         const { db } = await connectToDatabase();
 
         const products = await db.collection("products")
-            .find({ gender: profile.gender })
+            .find({ gender: { $in: [profile.gender, "unisex"] } })
             .limit(150)
             .toArray();
 
         const ai = await client.chat.completions.create({
             model: "gpt-5-mini",
             messages: [
-                { role: "system", content: "You are Style Safari's AI stylist. Create 3-5 outfit recommendations using provided products." },
-                { role: "user", content: JSON.stringify({ profile, products }) }
+                {
+                    role: "system",
+                    content: "You are Style Safari's AI stylist. Create 3-5 outfit suggestions using the provided products."
+                },
+                {
+                    role: "user",
+                    content: JSON.stringify({ profile, products })
+                }
             ]
         });
 
-        res.status(200).json(JSON.parse(ai.choices[0].message.content));
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.json(JSON.parse(ai.choices[0].message.content));
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 }
