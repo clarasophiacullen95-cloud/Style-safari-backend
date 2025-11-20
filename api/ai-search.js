@@ -4,51 +4,49 @@ import { connectToDatabase } from "../lib/db.js";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
-  const q = req.query.q;
-  const gender = req.query.gender;
+    const q = req.query.q?.toLowerCase();
+    const gender = req.query.gender || "unisex";
 
-  if (!q) return res.json([]);
-
-  try {
-    const embedding = await client.embeddings.create({
-      model: "text-embedding-3-small", // or "text-embedding-3-large" if your project has access
-      input: q
-    });
-    const vector = embedding.data[0].embedding;
+    if (!q) return res.json([]);
 
     const { db } = await connectToDatabase();
 
-    const regex = new RegExp(q.split(" ").join("|"), "i");
+    // First, try semantic search
+    try {
+        const embedding = await client.embeddings.create({
+            model: "text-embedding-3-large",
+            input: q
+        });
 
-    const results = await db.collection("products").aggregate([
-      {
-        $search: {
-          knnBeta: {
-            vector,
-            path: "embedding",
-            k: 25
-          }
-        }
-      },
-      {
-        $match: {
-          gender: { $in: [gender, "unisex"] },
-          $or: [
-            { name: regex },
-            { category: regex },
-            { tags: regex },
-            { fabric: regex },
-            { size: regex },
-            { occasion: regex },
-            { season: regex }
-          ]
-        }
-      }
-    ]).toArray();
+        const vector = embedding.data[0].embedding;
 
-    res.json(results);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
+        const results = await db.collection("products").aggregate([
+            {
+                $search: {
+                    knnBeta: { vector, path: "embedding", k: 50 }
+                }
+            },
+            {
+                $match: { gender: { $in: [gender, "unisex"] } }
+            }
+        ]).toArray();
+
+        if (results.length) return res.json(results);
+
+    } catch (err) {
+        console.error("Embedding search failed:", err.message);
+    }
+
+    // Fallback: text search
+    const fallback = await db.collection("products").find({
+        gender: { $in: [gender, "unisex"] },
+        $or: [
+            { name: { $regex: q, $options: "i" } },
+            { description: { $regex: q, $options: "i" } },
+            { category: { $regex: q, $options: "i" } },
+            { fabric: { $regex: q, $options: "i" } }
+        ]
+    }).limit(50).toArray();
+
+    res.json(fallback);
 }
