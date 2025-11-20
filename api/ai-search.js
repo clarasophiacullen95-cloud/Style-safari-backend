@@ -1,65 +1,50 @@
-// api/ai-search.js
-import OpenAI from "openai";
+// /api/ai-search.js
 import { connectToDatabase } from "../lib/db.js";
+import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// If embeddings are missing or OpenAI quota issues, we fallback to text search
 export default async function handler(req, res) {
-  const q = req.query.q;
-  const gender = req.query.gender?.toLowerCase();
-
+  const q = (req.query.q || "").trim();
+  const gender = (req.query.gender || "").toLowerCase();
   if (!q) return res.json([]);
 
-  try {
-    const { db } = await connectToDatabase();
+  const { db } = await connectToDatabase();
 
-    // Try embedding-based semantic search only if embeddings exist in db
-    const hasEmbeddings = await db.collection("products").findOne({ embedding: { $exists: true } });
-
-    if (hasEmbeddings) {
-      // Create query embedding. Use preferred model then fallback if 403
-      const EMB_MODEL_PRIMARY = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large";
-      const EMB_MODEL_FALLBACK = process.env.OPENAI_EMBEDDING_FALLBACK || "text-embedding-ada-002";
-
-      let vector;
-      try {
-        const r = await openai.embeddings.create({ model: EMB_MODEL_PRIMARY, input: q });
-        vector = r.data[0].embedding;
-      } catch (ePrimary) {
-        console.warn("Primary embedding model failed:", ePrimary?.message || ePrimary);
-        try {
-          const r2 = await openai.embeddings.create({ model: EMB_MODEL_FALLBACK, input: q });
-          vector = r2.data[0].embedding;
-        } catch (eFallback) {
-          console.error("Fallback embedding model also failed:", eFallback?.message || eFallback);
-          vector = null;
-        }
-      }
-
+  // If OpenAI key exists, try embedding-based knn search
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const embModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large";
+      const embResp = await openai.embeddings.create({ model: embModel, input: q });
+      const vector = embResp.data?.[0]?.embedding;
       if (vector) {
-        // Use MongoDB Atlas Search kNN if available (knnBeta). If not available, fallback to nearest neighbor on client (not implemented here).
+        // Use MongoDB Atlas vector search (knnBeta). If not using Atlas Search, fallback automatically below.
         const pipeline = [
-          { $search: { knnBeta: { vector, path: "embedding", k: 30 } } },
-          { $match: { in_stock: true, ...(gender ? { gender: { $in: [gender, "unisex"] } } : {}) } },
-          { $limit: 25 }
+          { $search: { knnBeta: { vector, path: "embedding", k: 50 } } },
+          { $match: { in_stock: true } },
         ];
+        if (gender) pipeline.push({ $match: { gender: { $in: [gender, "unisex"] } } });
+        pipeline.push({ $limit: 25 });
+
         const results = await db.collection("products").aggregate(pipeline).toArray();
-        return res.json(results);
+        if (Array.isArray(results) && results.length) return res.json(results);
+        // if no results or Atlas Search not configured, fallthrough to text search
       }
+    } catch (err) {
+      console.warn("Embedding-based search failed:", err.message);
+      // continue to text fallback
     }
-
-    // FALLBACK: text search using MongoDB text index
-    // You must create a text index: name, category, description, tags
-    const textFilter = { $text: { $search: q } };
-    if (gender) {
-      textFilter.$and = [{ gender: { $in: [gender, "unisex"] } }];
-    }
-
-    const results = await db.collection("products").find(textFilter).limit(50).toArray();
-    res.json(results);
-  } catch (err) {
-    console.error("Search error:", err);
-    res.status(500).json({ error: err.message });
   }
+
+  // Text-search fallback (requires text index on name/category/description/tags)
+  const textQuery = { $text: { $search: q } };
+  if (gender) textQuery.gender = { $in: [gender, "unisex"] };
+
+  const fallback = await db.collection("products")
+    .find(textQuery, { score: { $meta: "textScore" } })
+    .sort({ score: { $meta: "textScore" } })
+    .limit(50)
+    .toArray();
+
+  res.json(fallback);
 }
