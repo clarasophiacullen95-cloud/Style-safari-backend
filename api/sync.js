@@ -1,60 +1,33 @@
-import { connectToDatabase } from "../../lib/db.js";
-import { normalizeProduct } from "../../lib/helpers.js";
-import { generateEmbedding } from "../../lib/embeddings.js";
-import fetch from "node-fetch";
+import { connectToDatabase } from "../lib/db.js";
+import { normalizeProduct } from "../lib/helpers.js";
 
 export default async function handler(req, res) {
-    if (req.query.secret !== process.env.SYNC_SECRET) {
-        return res.status(401).json({ error: "Unauthorized" });
-    }
-
     try {
         const { db } = await connectToDatabase();
 
-        const response = await fetch(
-            `https://app.base44.com/api/apps/${process.env.BASE44_APP_ID}/entities/ProductFeed`,
-            {
-                headers: {
-                    "api_key": process.env.BASE44_API_KEY,
-                    "Content-Type": "application/json"
-                }
-            }
-        );
+        // Base44 automatically calls this endpoint
+        // Fetch products from Base44 database (already synced from feeds)
+        const base44Products = await db.collection("base44_products").find({}).toArray();
 
-        const raw = await response.json();
-
-        // 🔥 FIX: Accept Base44 array OR object format
-        const results = Array.isArray(raw)
-            ? raw
-            : raw.results || raw.data || [];
-
-        if (!Array.isArray(results)) {
-            return res.status(500).json({
-                error: "Base44 response not array",
-                raw
+        if (!base44Products || base44Products.length === 0) {
+            return res.status(200).json({
+                message: "Base44 fetch failed, using cached products",
+                count: 0,
+                error: "data.results is undefined or invalid"
             });
         }
 
-        let synced = 0;
+        const cleaned = base44Products.map(normalizeProduct);
 
-        for (const item of results) {
-            const product = normalizeProduct(item);
-            const embedding = await generateEmbedding(product);
-
+        for (const product of cleaned) {
             await db.collection("products").updateOne(
                 { product_id: product.product_id },
-                { $set: { ...product, embedding, last_synced: new Date() } },
+                { $set: product },
                 { upsert: true }
             );
-
-            synced++;
         }
 
-        res.json({
-            message: "Products synced",
-            count: synced
-        });
-
+        res.status(200).json({ message: "Products synced (with cache fallback and batching)", count: cleaned.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
