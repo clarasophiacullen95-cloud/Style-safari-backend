@@ -93,6 +93,12 @@ button:hover {
     text-align: center;
     width: 150px;
     box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.outfit .products div:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 3px 12px rgba(0,0,0,0.15);
 }
 
 .outfit .products img {
@@ -120,6 +126,12 @@ button:hover {
     width: 120px;
     text-align: center;
     box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.products div:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .products img {
@@ -131,6 +143,39 @@ button:hover {
 .products p {
     font-size: 12px;
     color: #333;
+}
+
+/* AI Stylist Buttons & Refresh */
+#curate-button, #refresh-button {
+    display: inline-block;
+    margin: 10px 0;
+    background-color: #4caf50;
+    color: #fff;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#curate-button:hover, #refresh-button:hover {
+    background-color: #45a049;
+}
+
+/* Feedback messages */
+.feedback {
+    text-align: center;
+    margin-top: 10px;
+    color: #ff6f61;
+    font-weight: bold;
+}
+
+/* Loading state */
+.loading {
+    text-align: center;
+    font-style: italic;
+    color: #888;
+    margin-top: 10px;
 }
 
 /* Responsive design */
